@@ -1,0 +1,149 @@
+# Recetas Claras: Extractor de Recetas Médicas con IA
+
+Este proyecto es un asistente de salud inteligente en Telegram diseñado para procesar, extraer y persistir de forma estructurada la información de recetas u órdenes médicas en formato físico (imágenes) usando modelos avanzados de Inteligencia Artificial (Gemini Vision) y bases de datos locales (SQLite).
+
+## 📋 Arquitectura del Proyecto
+
+El sistema se estructura en capas desacopladas y modulares para mantener el código limpio y mantenible:
+
+```
+                  [ Usuario (Telegram) ]
+                            │  ▲
+                            │  │ (Envío de fotos de recetas)
+                            ▼  │
+┌─────────────────────────────────────────────────────────────┐
+│                 BOT DE TELEGRAM (telegram_bot.py)           │
+│  - Controla la interacción, comandos e inicio del polling.  │
+│  - Descarga y convierte las imágenes enviadas.              │
+└─────────────────────────────┬───────────────────────────────┘
+                              │
+            ┌─────────────────┴─────────────────┐
+            ▼                                   ▼
+┌───────────────────────┐           ┌───────────────────────┐
+│  EXTRACTOR DE RECETAS │           │   BASE DE DATOS LOCAL │
+│ (recipe_extractor.py) │           │     (database.py)     │
+│                       │           │                       │
+│ - Envía la imagen a   │           │ - Crea tablas en      │
+│   Gemini Vision.      │           │   recetas.db.         │
+│ - Parsea el resultado │           │ - Guarda cabeceras y  │
+│   a un formato JSON.  │           │   medicamentos en     │
+└───────────┬───────────┘           │   transacciones.      │
+            │                       └───────────────────────┘
+            ▼
+┌───────────────────────┐
+│     CLIENTES API      │
+│   (api_clients.py)    │
+│                       │
+│ - Inicializa clientes │
+│   Gemini, Groq y      │
+│   OpenFDA.            │
+└───────────────────────┘
+```
+
+---
+
+## 🗃️ Estructura de Archivos
+
+- **`telegram_bot.py`**: Configuración del bot. Maneja comandos `/start` y la recepción de imágenes en los chats.
+- **`recipe_extractor.py`**: Lógica de procesamiento de imágenes. Utiliza el modelo `gemini-2.5-flash` con parámetros de salida estrictos `application/json` y reintentos automáticos para lidiar con picos de carga.
+- **`database.py`**: Conexión e interacción con la base de datos SQLite. Define los esquemas e implementa las funciones de persistencia transaccionales.
+- **`api_clients.py`**: Instanciación y gestión de los clientes oficiales para Groq (`llama-3.3-70b-versatile`), Gemini (`google-genai`) y la API pública de OpenFDA.
+
+---
+
+## 💾 Estructura de la Base de Datos
+
+La persistencia local se realiza en la base de datos `recetas.db` bajo las siguientes tablas:
+
+### 1. Tabla `recetas` (Cabecera)
+Almacena los datos personales del paciente, detalles del médico y del lugar emisor.
+- `id` (INTEGER PRIMARY KEY AUTOINCREMENT)
+- `paciente_nombre` (TEXT)
+- `paciente_fecha_nacimiento` (TEXT)
+- `paciente_cedula` (TEXT)
+- `paciente_telefono` (TEXT)
+- `clinica_nombre` (TEXT)
+- `clinica_direccion` (TEXT)
+- `medico_nombre` (TEXT)
+- `medico_especialidad` (TEXT)
+- `fecha_receta` (TEXT)
+- `created_at` (TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
+
+### 2. Tabla `medicamentos` (Detalle)
+Almacena cada uno de los medicamentos prescritos en la receta correspondiente.
+- `id` (INTEGER PRIMARY KEY AUTOINCREMENT)
+- `receta_id` (INTEGER, FOREIGN KEY enlazado a `recetas(id)` con eliminación en cascada)
+- `nombre` (TEXT)
+- `dosis` (TEXT)
+- `frecuencia` (TEXT)
+- `duracion` (TEXT)
+
+---
+
+## 🛠️ Requisitos de Instalación
+
+1. **Clonar el repositorio** e ingresar a la carpeta:
+   ```bash
+   cd "Recetas Medicas"
+   ```
+
+2. **Crear y activar el entorno virtual**:
+   ```bash
+   python -m venv venv
+   # En Windows:
+   .\venv\Scripts\activate
+   # En macOS/Linux:
+   source venv/bin/activate
+   ```
+
+3. **Instalar dependencias**:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. **Configurar el archivo `.env`** en la raíz del proyecto:
+   ```env
+   TELEGRAM_TOKEN=tu_token_de_telegram
+   GROQ_API_KEY=tu_token_de_groq
+   GEMINI_API_KEY=tu_token_de_gemini
+   ```
+
+---
+
+## 🚀 Ejecución
+
+Para iniciar el bot y crear automáticamente la base de datos si no existe, ejecuta:
+
+```bash
+python telegram_bot.py
+```
+
+Al enviar una imagen por Telegram, el bot procesará la foto y responderá con el JSON estructurado además de confirmar su almacenamiento:
+
+```json
+{
+  "paciente": {
+    "nombre_completo": "Juan Pérez",
+    "fecha_nacimiento": "15-08-1988",
+    "cedula": "10203040",
+    "telefono": "3001234567"
+  },
+  "clinica": {
+    "nombre": "Clínica de la Sabana",
+    "direccion": "Calle 100 #15-30"
+  },
+  "medico": {
+    "nombre": "Dr. Carlos Gómez",
+    "especialidad": "Medicina General"
+  },
+  "fecha": "2026-06-11",
+  "medicamentos": [
+    {
+      "nombre": "Acetaminofén",
+      "dosis": "500 mg",
+      "frecuencia": "Cada 6 horas",
+      "duracion": "5 días"
+    }
+  ]
+}
+```

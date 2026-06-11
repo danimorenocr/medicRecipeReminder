@@ -1,0 +1,29 @@
+# Entorno Virtual
+venv/
+ENV/
+env/
+.venv/
+
+# Base de datos local
+*.db
+recetas.db
+
+# Configuración / Secretos
+.env
+
+# Caché de Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Editores / IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Archivos del sistema
+Thumbs.db
+Desktop.ini
