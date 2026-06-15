@@ -1,0 +1,1848 @@
+import * as React from 'react';
+import { useState, useEffect } from 'react';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Switch, StatusBar, Modal, TextInput, useWindowDimensions, Platform } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Bell, Wifi, ArrowRight, Plus, X, Check, Calendar, Clock, Minus, Pill, Droplet, Activity, Coffee, Heart, Syringe, Thermometer, FlaskConical } from 'lucide-react-native';
+import AlarmTriggerOverlay from '../components/alarm-trigger-overlay';
+import * as Notifications from 'expo-notifications';
+
+// Dynamically require Notifee to prevent crashing in Expo Go
+let notifee: any = null;
+let AndroidImportance: any = null;
+try {
+  const notifeeModule = require('@notifee/react-native');
+  notifee = notifeeModule.default;
+  AndroidImportance = notifeeModule.AndroidImportance;
+} catch (e) {
+  // Gracefully fallback to expo-notifications
+}
+
+// Set up expo-notifications handler to show notifications even when app is in foreground
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: false,
+    shouldVibrate: false,
+    shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
+
+export default function AlarmsScreen() {
+  const router = useRouter();
+  const { meds, updatedAlarms, updatedMedId } = useLocalSearchParams();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+
+  // Dynamic responsive styles
+  const cellWidth = Math.floor((screenWidth - 32 - 16) / 7);
+  const dynamicCellStyles = {
+    width: cellWidth,
+    height: cellWidth,
+    borderRadius: cellWidth / 2,
+  };
+  const dynamicHeaderCellStyles = {
+    width: cellWidth,
+    textAlign: 'center' as const,
+  };
+  const dynamicCellEmptyStyles = {
+    width: cellWidth,
+    height: cellWidth,
+  };
+  const dynamicTitleStyle = {
+    fontSize: screenWidth < 360 ? 24 : 32,
+    marginBottom: screenHeight < 680 ? 12 : 24,
+  };
+  const dynamicCalendarWrapperStyle = {
+    marginTop: screenHeight < 680 ? 12 : 24,
+    marginBottom: screenHeight < 680 ? 8 : 16,
+  };
+  const dynamicSectionLabelStyle = {
+    marginTop: screenHeight < 680 ? 12 : 20,
+  };
+  const [medications, setMedications] = useState([
+    {
+      id: 1,
+      name: "Amoxicilina 500mg",
+      dose: "1 cápsula",
+      frequency: "Cada 12 horas",
+      duration: "7 días",
+      icon: "pill",
+      iconBg: '#c4d2ff30',
+      active: true,
+      alarms: [
+        { id: 101, time: "08:00 AM", active: true, status: 'pending' },
+        { id: 102, time: "08:00 PM", active: true, status: 'pending' }
+      ]
+    },
+    {
+      id: 2,
+      name: "Ibuprofeno 400mg",
+      dose: "1 tableta",
+      frequency: "Cada 8 horas",
+      duration: "3 días",
+      icon: "pill",
+      iconBg: '#82f9be30',
+      active: true,
+      alarms: [
+        { id: 201, time: "06:00 AM", active: true, status: 'pending' },
+        { id: 202, time: "02:00 PM", active: true, status: 'pending' },
+        { id: 203, time: "10:00 PM", active: true, status: 'pending' }
+      ]
+    },
+    {
+      id: 3,
+      name: "Vitamina D",
+      dose: "1 gota",
+      frequency: "Una vez al día",
+      duration: "30 días",
+      icon: "droplet",
+      iconBg: '#edeef0',
+      active: false,
+      alarms: [
+        { id: 301, time: "08:00 PM", active: false, status: 'pending' }
+      ]
+    }
+  ]);
+
+  useEffect(() => {
+    if (updatedAlarms && updatedMedId) {
+      try {
+        const alarmsList = JSON.parse(updatedAlarms as string);
+        const medId = parseInt(updatedMedId as string, 10);
+        setMedications(prev => prev.map(m => {
+          if (m.id === medId) {
+            const anyActive = alarmsList.some((a: any) => a.active);
+            return { ...m, active: anyActive, alarms: alarmsList };
+          }
+          return m;
+        }));
+      } catch (e) {
+        console.error("Error al actualizar alarmas desde la vista de detalle:", e);
+      }
+    }
+  }, [updatedAlarms, updatedMedId]);
+
+  // Active Simulated/Real alarm state
+  const [activeAlarm, setActiveAlarm] = useState<{
+    medication: any;
+    alarm: any;
+  } | null>(null);
+
+  const triggerNotification = async (medication: any, alarm: any) => {
+    try {
+      if (Platform.OS !== 'web') {
+        // 1. Try Notifee if available (Standalone build)
+        if (notifee && AndroidImportance) {
+          try {
+            await notifee.requestPermission();
+            const channelId = await notifee.createChannel({
+              id: 'alarmas-medicinas',
+              name: 'Recordatorios de Medicinas',
+              importance: AndroidImportance.HIGH,
+              vibration: true,
+            });
+            await notifee.displayNotification({
+              title: `💊 ¡Hora de tomar ${medication.name}!`,
+              body: `Dosis: ${medication.dose} - ${medication.frequency}`,
+              android: {
+                channelId,
+                sound: 'default',
+                importance: AndroidImportance.HIGH,
+                pressAction: {
+                  id: 'default',
+                },
+              },
+              ios: {
+                sound: 'default',
+              },
+            });
+            return;
+          } catch (notifeeError) {
+            console.warn("Notifee failed, using expo-notifications fallback:", notifeeError);
+          }
+        }
+
+        // 2. Fallback to expo-notifications (Expo Go compatible!)
+        await Notifications.requestPermissionsAsync();
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: `💊 ¡Hora de tomar ${medication.name}!`,
+            body: `Dosis: ${medication.dose} - ${medication.frequency}`,
+            sound: false, // Silent notification to avoid double beep
+          },
+          trigger: null, // trigger immediately
+        });
+      }
+    } catch (err) {
+      console.error("Error launching notification:", err);
+    }
+  };
+
+  useEffect(() => {
+    const checkAlarms = () => {
+      const now = new Date();
+      let hours = now.getHours();
+      const minutes = now.getMinutes().toString().padStart(2, '0');
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12;
+      hours = hours ? hours : 12;
+      const formattedHour = hours.toString().padStart(2, '0');
+      const currentTimeString = `${formattedHour}:${minutes} ${ampm}`;
+
+      for (const med of medications) {
+        if (med.active) {
+          for (const alarm of med.alarms) {
+            if (alarm.active && alarm.status === 'pending' && alarm.time === currentTimeString) {
+              setActiveAlarm({ medication: med, alarm });
+              triggerNotification(med, alarm);
+              return;
+            }
+          }
+        }
+      }
+    };
+
+    // Check every 10 seconds
+    const interval = setInterval(checkAlarms, 10000);
+    return () => clearInterval(interval);
+  }, [medications]);
+
+  const handleAlarmTake = (medId: number, alarmId: number) => {
+    setMedications(prev => prev.map(m => {
+      if (m.id === medId) {
+        const updatedAlarms = m.alarms.map(a => a.id === alarmId ? { ...a, status: 'taken' } : a);
+        return { ...m, alarms: updatedAlarms };
+      }
+      return m;
+    }));
+    setActiveAlarm(null);
+  };
+
+  const handleAlarmSnooze = (medId: number, alarmId: number) => {
+    setMedications(prev => prev.map(m => {
+      if (m.id === medId) {
+        const updatedAlarms = m.alarms.map(a => {
+          if (a.id === alarmId) {
+            const [timeStr, ampmStr] = a.time.split(' ');
+            const [hStr, mStr] = timeStr.split(':');
+            let h = parseInt(hStr, 10);
+            let min = parseInt(mStr, 10);
+            if (ampmStr === 'PM' && h < 12) h += 12;
+            if (ampmStr === 'AM' && h === 12) h = 0;
+
+            const date = new Date();
+            date.setHours(h);
+            date.setMinutes(min + 10);
+
+            let newHours = date.getHours();
+            const newMinutes = date.getMinutes().toString().padStart(2, '0');
+            const newAmpm = newHours >= 12 ? 'PM' : 'AM';
+            newHours = newHours % 12;
+            newHours = newHours ? newHours : 12;
+            const newFormattedHour = newHours.toString().padStart(2, '0');
+            const newTime = `${newFormattedHour}:${newMinutes} ${newAmpm}`;
+
+            return { ...a, time: newTime, status: 'snoozed' };
+          }
+          return a;
+        });
+        return { ...m, alarms: updatedAlarms };
+      }
+      return m;
+    }));
+    setActiveAlarm(null);
+  };
+
+  // Modal & Form States
+  const [modalVisible, setModalVisible] = useState(false);
+  const [currentStep, setCurrentStep] = useState(1);
+  const [queue, setQueue] = useState<any[]>([]);
+  const [currentQueueIndex, setCurrentQueueIndex] = useState(0);
+
+  const [formMedName, setFormMedName] = useState('');
+  const [formDose, setFormDose] = useState('');
+  const [formFrequency, setFormFrequency] = useState('Cada 12 horas');
+  const [formTime, setFormTime] = useState('08:00 AM');
+  
+  // Duration Value & Unit Configurable States
+  const [durationValue, setDurationValue] = useState('7');
+  const [durationUnit, setDurationUnit] = useState('días'); // 'horas' | 'días' | 'meses'
+  
+  const [formIcon, setFormIcon] = useState('pill');
+  const [formIconBg, setFormIconBg] = useState('#c4d2ff30');
+
+  // Time fields for 12-hour AM/PM format input
+  const [timeHour, setTimeHour] = useState('08');
+  const [timeMinute, setTimeMinute] = useState('00');
+  const [timeAmPm, setTimeAmPm] = useState('AM');
+
+  // Calculated Schedules and Picker State
+  const [scheduledTimes, setScheduledTimes] = useState<string[]>(["08:00 AM"]);
+  const [showFreqDropdown, setShowFreqDropdown] = useState(false);
+  const [editingTimeIndex, setEditingTimeIndex] = useState<number | null>(null);
+  
+  // Temporal inputs for editing scheduled times
+  const [tempHour, setTempHour] = useState('08');
+  const [tempMinute, setTempMinute] = useState('00');
+  const [tempAmPm, setTempAmPm] = useState('AM');
+
+  useEffect(() => {
+    if (meds) {
+      try {
+        const parsedMeds = JSON.parse(meds as string);
+        if (parsedMeds && parsedMeds.length > 0) {
+          setQueue(parsedMeds);
+          setCurrentQueueIndex(0);
+          loadMedIntoForm(parsedMeds[0]);
+          setModalVisible(true);
+          setCurrentStep(1);
+        }
+      } catch (e) {
+        console.error("Error al cargar medicamentos en cola:", e);
+      }
+    }
+  }, [meds]);
+
+  // Function to calculate schedules dynamically based on starting hour and frequency
+  const calculateTimesFromFrequency = (hourStr: string, minStr: string, ampmStr: string, freqStr: string) => {
+    let hr = parseInt(hourStr, 10);
+    let min = parseInt(minStr, 10);
+    if (isNaN(hr)) hr = 8;
+    if (isNaN(min)) min = 0;
+    
+    if (ampmStr === 'PM' && hr < 12) hr += 12;
+    if (ampmStr === 'AM' && hr === 12) hr = 0;
+
+    let interval = 24;
+    const cleanFreq = freqStr.toLowerCase();
+    if (cleanFreq.includes('8') || cleanFreq.includes('ocho')) interval = 8;
+    else if (cleanFreq.includes('12') || cleanFreq.includes('doce')) interval = 12;
+    else if (cleanFreq.includes('6') || cleanFreq.includes('seis')) interval = 6;
+    else if (cleanFreq.includes('4') || cleanFreq.includes('cuatro')) interval = 4;
+    else if (cleanFreq.includes('24') || cleanFreq.includes('veinticuatro') || cleanFreq.includes('día') || cleanFreq.includes('dia')) interval = 24;
+
+    const timesCount = Math.floor(24 / interval);
+    const result = [];
+    for (let i = 0; i < timesCount; i++) {
+      const currentHr = (hr + i * interval) % 24;
+      const finalAmPm = currentHr >= 12 ? 'PM' : 'AM';
+      let displayHr = currentHr % 12;
+      if (displayHr === 0) displayHr = 12;
+      const hrString = displayHr.toString().padStart(2, '0');
+      const minString = min.toString().padStart(2, '0');
+      result.push(`${hrString}:${minString} ${finalAmPm}`);
+    }
+    return result;
+  };
+
+  const handleFrequencyChange = (newFreq: string) => {
+    setFormFrequency(newFreq);
+    const updated = calculateTimesFromFrequency(timeHour, timeMinute, timeAmPm, newFreq);
+    setScheduledTimes(updated);
+    setShowFreqDropdown(false);
+  };
+
+  const updateFormTime = (hour: string, minute: string, ampm: string) => {
+    let formattedHour = hour.padStart(2, '0');
+    let formattedMinute = minute.padStart(2, '0');
+    setFormTime(`${formattedHour}:${formattedMinute} ${ampm}`);
+  };
+
+  const parseImportedDuration = (dur: string) => {
+    const matchNum = dur.match(/(\d+)/);
+    const val = matchNum ? matchNum[0] : '7';
+    let unit = 'días';
+    if (dur.toLowerCase().includes('hora')) unit = 'horas';
+    else if (dur.toLowerCase().includes('mes')) unit = 'meses';
+    return { val, unit };
+  };
+
+  const loadMedIntoForm = (med: any) => {
+    const medName = med?.nombre || '';
+    const medDose = med?.dosis || '';
+    const freq = med?.frecuencia || 'Cada 12 horas';
+    const duration = med?.duracion || '7 días';
+
+    setFormMedName(medName);
+    setFormDose(medDose);
+    setFormFrequency(freq);
+    
+    const parsedDur = parseImportedDuration(duration);
+    setDurationValue(parsedDur.val);
+    setDurationUnit(parsedDur.unit);
+
+    setSelectedDate(new Date());
+    setFormTime('08:00 AM');
+    setTimeHour('08');
+    setTimeMinute('00');
+    setTimeAmPm('AM');
+    setFormIcon('pill');
+    setFormIconBg('#c4d2ff30');
+
+    // Calculate times from imported recipe frequencies
+    const initialTimes = calculateTimesFromFrequency('08', '00', 'AM', freq);
+    setScheduledTimes(initialTimes);
+  };
+
+  const handleOpenManual = () => {
+    setQueue([]);
+    setCurrentQueueIndex(0);
+    setFormMedName('');
+    setFormDose('');
+    setFormFrequency('Cada 12 horas');
+    setDurationValue('7');
+    setDurationUnit('días');
+    setSelectedDate(new Date());
+    setFormTime('08:00 AM');
+    setTimeHour('08');
+    setTimeMinute('00');
+    setTimeAmPm('AM');
+    setFormIcon('pill');
+    setFormIconBg('#c4d2ff30');
+    setScheduledTimes(["08:00 AM", "08:00 PM"]);
+    setModalVisible(true);
+    setCurrentStep(1);
+  };
+
+  const handleSaveAlarm = () => {
+    // Generate alarms for all scheduled times
+    const newAlarms = scheduledTimes.map((t, idx) => ({
+      id: Date.now() + idx,
+      time: t,
+      active: true,
+      status: 'pending'
+    }));
+
+    const newMed = {
+      id: Date.now(),
+      name: formMedName,
+      dose: formDose,
+      frequency: formFrequency,
+      duration: `${durationValue} ${durationUnit}`,
+      icon: formIcon,
+      iconBg: formIconBg,
+      active: true,
+      alarms: newAlarms
+    };
+
+    setMedications(prev => [newMed, ...prev]);
+
+    // Ver si hay más en la cola de importación
+    if (queue.length > 0 && currentQueueIndex + 1 < queue.length) {
+      const nextIndex = currentQueueIndex + 1;
+      setCurrentQueueIndex(nextIndex);
+      loadMedIntoForm(queue[nextIndex]);
+      setCurrentStep(1);
+    } else {
+      setModalVisible(false);
+      setQueue([]);
+      setCurrentQueueIndex(0);
+      router.setParams({ meds: undefined });
+    }
+  };
+
+  const toggleActive = (id: number) => {
+    setMedications(prevMeds => prevMeds.map(med => {
+      if (med.id === id) {
+        const newActive = !med.active;
+        const updatedAlarms = med.alarms.map(alarm => ({ ...alarm, active: newActive }));
+        return { ...med, active: newActive, alarms: updatedAlarms };
+      }
+      return med;
+    }));
+  };
+
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+
+  // Calculates End Date dynamically based on selected start date, value, and unit
+  const getCalculatedEndDate = () => {
+    const d = new Date(selectedDate.getTime());
+    const val = parseInt(durationValue, 10);
+    if (isNaN(val) || val <= 0) return d;
+
+    if (durationUnit === 'horas') {
+      const daysToAdd = Math.floor(val / 24);
+      d.setDate(d.getDate() + daysToAdd);
+    } else if (durationUnit === 'días') {
+      d.setDate(d.getDate() + val);
+    } else if (durationUnit === 'meses') {
+      d.setMonth(d.getMonth() + val);
+    }
+    return d;
+  };
+
+  // Helper date grid for rendering the calendar in Spanish
+  const getDaysGrid = () => {
+    const year = selectedDate.getFullYear();
+    const month = selectedDate.getMonth();
+    const firstDayIndex = new Date(year, month, 1).getDay();
+    const numDays = new Date(year, month + 1, 0).getDate();
+    
+    const grid = [];
+    for (let i = 0; i < firstDayIndex; i++) {
+      grid.push(null);
+    }
+    for (let i = 1; i <= numDays; i++) {
+      grid.push(new Date(year, month, i));
+    }
+    return grid;
+  };
+
+  // Helper date methods in Spanish
+  const getStartDateString = () => {
+    const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+    return `${selectedDate.getDate()} de ${months[selectedDate.getMonth()]}`;
+  };
+
+  const getEndDateString = () => {
+    const endDate = getCalculatedEndDate();
+    const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+    return `${endDate.getDate()} de ${months[endDate.getMonth()]}`;
+  };
+
+  const isDateSelected = (date: Date) => {
+    return date.getDate() === selectedDate.getDate() &&
+      date.getMonth() === selectedDate.getMonth() &&
+      date.getFullYear() === selectedDate.getFullYear();
+  };
+
+  const isDateEndDate = (date: Date) => {
+    const endDate = getCalculatedEndDate();
+    return date.getDate() === endDate.getDate() &&
+      date.getMonth() === endDate.getMonth() &&
+      date.getFullYear() === endDate.getFullYear();
+  };
+
+  const isDateInRange = (date: Date) => {
+    const start = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
+    const end = getCalculatedEndDate();
+    const endMidnight = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+    const current = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    return current > start && current < endMidnight;
+  };
+
+  const renderAlarmIcon = (iconName: string, color = "#003d9b") => {
+    switch (iconName) {
+      case 'pill':
+        return <Pill color={color} size={20} />;
+      case 'droplet':
+        return <Droplet color={color} size={20} />;
+      case 'flask':
+        return <FlaskConical color={color} size={20} />;
+      case 'syringe':
+        return <Syringe color={color} size={20} />;
+      case 'thermometer':
+        return <Thermometer color={color} size={20} />;
+      case 'heart':
+        return <Heart color={color} size={20} />;
+      default:
+        return <Pill color={color} size={20} />;
+    }
+  };
+
+  return (
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <StatusBar barStyle="dark-content" backgroundColor="#f8f9fb" />
+      
+      {/* Header matching screenshot */}
+      <View style={styles.header}>
+        <View style={styles.headerLeft}>
+          <View style={styles.doctorAvatar}>
+            <Text style={styles.doctorAvatarText}>👨‍⚕️</Text>
+          </View>
+          <Text style={styles.headerTitle}>MediAssist AI</Text>
+        </View>
+        <Wifi color="#191c1e" size={20} />
+      </View>
+
+      <ScrollView 
+        contentContainerStyle={styles.scrollContent} 
+        showsVerticalScrollIndicator={false}
+      >
+        
+        {/* Card 1: Progreso del día */}
+        <View style={styles.progressCard}>
+          <View style={styles.progressCardLeft}>
+            <Text style={styles.progressCardTitle}>Progreso del día</Text>
+            <Text style={styles.progressCardDesc}>Has completado el 75% de tus tomas.</Text>
+            <View style={styles.completedBadge}>
+              <Text style={styles.completedBadgeText}>3 de 4 completadas</Text>
+            </View>
+          </View>
+          {/* Circular Progress Ring Mock */}
+          <View style={styles.progressRingWrapper}>
+            <View style={styles.progressRingOuter}>
+              <View style={styles.progressRingInner}>
+                <Text style={styles.progressPercentText}>75%</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        {/* Card 2: Nueva Alarma */}
+        <TouchableOpacity style={styles.newAlarmCard} activeOpacity={0.85} onPress={handleOpenManual}>
+          <View style={styles.newAlarmLeft}>
+            <View style={styles.newAlarmIconWrapper}>
+              <Bell color="#ffffff" size={20} />
+            </View>
+            <View style={{ marginLeft: 14 }}>
+              <Text style={styles.newAlarmTitle}>Nueva Alarma</Text>
+              <Text style={styles.newAlarmDesc}>Configura un nuevo recordatorio</Text>
+              <Text style={styles.newAlarmDesc}>personalizado.</Text>
+            </View>
+          </View>
+          <ArrowRight color="#ffffff" size={20} />
+        </TouchableOpacity>
+
+        {/* Card 3: Simular Alarma */}
+        <TouchableOpacity 
+          style={[styles.newAlarmCard, { backgroundColor: '#34c759', marginBottom: 24 }]} 
+          activeOpacity={0.85} 
+          onPress={() => {
+            const activeMeds = medications.filter(m => m.active);
+            const selectedMed = activeMeds.length > 0 ? activeMeds[0] : medications[0];
+            const selectedAlarm = selectedMed.alarms[0];
+            
+            setActiveAlarm({
+              medication: selectedMed,
+              alarm: selectedAlarm
+            });
+            triggerNotification(selectedMed, selectedAlarm);
+          }}
+        >
+          <View style={styles.newAlarmLeft}>
+            <View style={styles.newAlarmIconWrapper}>
+              <Bell color="#ffffff" size={20} />
+            </View>
+            <View style={{ marginLeft: 14 }}>
+              <Text style={styles.newAlarmTitle}>Simular Alarma Test</Text>
+              <Text style={styles.newAlarmDesc}>Probar sonido y pantalla completa</Text>
+              <Text style={styles.newAlarmDesc}>del recordatorio de inmediato.</Text>
+            </View>
+          </View>
+          <ArrowRight color="#ffffff" size={20} />
+        </TouchableOpacity>
+
+        {/* Mis Medicamentos Section */}
+        <Text style={styles.sectionTitle}>Mis medicamentos</Text>
+
+        {medications.map(med => (
+          <TouchableOpacity 
+            key={med.id} 
+            style={[styles.alarmCard, !med.active && styles.inactiveCard]}
+            activeOpacity={0.7}
+            onPress={() => {
+              router.push({
+                pathname: '/medication-alarms' as any,
+                params: { 
+                  medId: med.id, 
+                  medName: med.name,
+                  medDose: med.dose,
+                  medFrequency: med.frequency,
+                  medIcon: med.icon,
+                  medIconBg: med.iconBg,
+                  medAlarms: JSON.stringify(med.alarms)
+                }
+              });
+            }}
+          >
+            <View style={{ backgroundColor: med.iconBg, width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
+              {renderAlarmIcon(med.icon, "#003d9b")}
+            </View>
+
+            <View style={styles.alarmContent}>
+              <Text style={[styles.alarmMedName, !med.active && styles.inactiveText, { fontSize: 16 }]}>{med.name}</Text>
+              <Text style={[styles.alarmDose, { marginTop: 2 }]}>{med.dose} • {med.frequency}</Text>
+              <Text style={{ fontSize: 11, color: '#8e8e93', marginTop: 2, fontWeight: '500' }}>
+                {med.alarms.filter((a: any) => a.active).length} de {med.alarms.length} {med.alarms.length === 1 ? 'alarma activa' : 'alarmas activas'}
+              </Text>
+            </View>
+
+            <Switch
+              value={med.active}
+              onValueChange={() => toggleActive(med.id)}
+              trackColor={{ false: '#edeef0', true: '#003d9b' }}
+              thumbColor={med.active ? '#ffffff' : '#737685'}
+            />
+          </TouchableOpacity>
+        ))}
+
+        <TouchableOpacity style={styles.completedLink} activeOpacity={0.7}>
+          <Text style={styles.completedLinkText}>Ver tomas completadas (3)</Text>
+        </TouchableOpacity>
+
+      </ScrollView>
+
+      {/* Floating Action Button exactly matching screenshot position */}
+      <TouchableOpacity style={styles.fab} activeOpacity={0.85} onPress={handleOpenManual}>
+        <Plus color="#ffffff" size={24} />
+      </TouchableOpacity>
+
+      {/* Modal de Alarma Full-Screen */}
+      <Modal
+        visible={modalVisible}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => {
+          setModalVisible(false);
+          setQueue([]);
+        }}
+      >
+        <SafeAreaView style={styles.fsContainer} edges={['top', 'bottom']}>
+          {/* Header Row */}
+          <View style={styles.fsHeader}>
+            <View style={styles.fsHeaderLeft}>
+              {currentStep > 1 ? (
+                <TouchableOpacity 
+                  onPress={() => setCurrentStep(currentStep - 1)}
+                  style={{ paddingVertical: 8, paddingHorizontal: 6 }}
+                >
+                  <Text style={{ fontSize: 16, color: '#007aff', fontWeight: '600' }}>Atrás</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity 
+                  onPress={() => {
+                    setModalVisible(false);
+                    setQueue([]);
+                  }}
+                  style={{ paddingVertical: 8, paddingHorizontal: 6 }}
+                >
+                  <Text style={{ fontSize: 16, color: '#ff3b30', fontWeight: '600' }}>Cancelar</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <View style={styles.fsHeaderTitleCenter}>
+              <Text style={styles.fsHeaderMedName} numberOfLines={1}>{formMedName || 'Medicamento'}</Text>
+              <Text style={styles.fsHeaderMedDose} numberOfLines={1}>{formDose || 'Sin dosis'}</Text>
+            </View>
+
+            <View style={styles.fsHeaderRight}>
+              {currentStep > 1 && (
+                <TouchableOpacity 
+                  onPress={() => {
+                    setModalVisible(false);
+                    setQueue([]);
+                  }}
+                  style={{ paddingVertical: 8, paddingHorizontal: 6 }}
+                >
+                  <Text style={{ fontSize: 16, color: '#ff3b30', fontWeight: '600' }}>Cancelar</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+
+          <ScrollView 
+            style={styles.fsBody} 
+            contentContainerStyle={styles.fsBodyContent} 
+            keyboardShouldPersistTaps="handled"
+          >
+            {/* Step indicator dots */}
+            <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8, marginTop: 8, marginBottom: 16 }}>
+              {[1, 2, 3, 4, 5].map((s) => (
+                <View 
+                  key={s} 
+                  style={{
+                    width: currentStep === s ? 20 : 8,
+                    height: 8,
+                    borderRadius: 4,
+                    backgroundColor: currentStep === s ? '#007aff' : '#d1d1d6',
+                  }} 
+                />
+              ))}
+            </View>
+
+            {currentStep === 1 && (
+              <>
+                <View style={[styles.fsCalendarWrapper, dynamicCalendarWrapperStyle]}>
+                  <View style={styles.fsCalendarIconBg}>
+                    <View style={styles.fsDotsRow}>
+                      <View style={[styles.fsDot, {backgroundColor: '#a2c5f7'}]}/>
+                      <View style={[styles.fsDot, {backgroundColor: '#a2c5f7'}]}/>
+                      <View style={[styles.fsDot, {backgroundColor: '#a2c5f7'}]}/>
+                    </View>
+                    <View style={styles.fsDotsRow}>
+                      <View style={[styles.fsDot, {backgroundColor: '#a2c5f7'}]}/>
+                      <View style={[styles.fsDot, {backgroundColor: '#007aff'}]}/>
+                      <View style={[styles.fsDot, {backgroundColor: '#007aff'}]}/>
+                    </View>
+                    <View style={styles.fsDotsRow}>
+                      <View style={[styles.fsDot, {backgroundColor: '#007aff'}]}/>
+                      <View style={[styles.fsDot, {backgroundColor: '#007aff'}]}/>
+                      <View style={[styles.fsDot, {backgroundColor: '#007aff'}]}/>
+                    </View>
+                  </View>
+                </View>
+
+                <Text style={[styles.fsMainTitle, dynamicTitleStyle]}>Paso 1: Medicamento</Text>
+                <Text style={styles.fsSectionLabel}>¿Cómo se llama tu medicamento y cuál es su dosis?</Text>
+                <View style={styles.fsCard}>
+                  <TextInput
+                    style={styles.fsInput}
+                    placeholder="Nombre del medicamento"
+                    placeholderTextColor="#a0a4b0"
+                    value={formMedName}
+                    onChangeText={setFormMedName}
+                  />
+                  <View style={styles.fsDivider} />
+                  <TextInput
+                    style={styles.fsInput}
+                    placeholder="Dosis (Ej. 1 tableta / 500mg)"
+                    placeholderTextColor="#a0a4b0"
+                    value={formDose}
+                    onChangeText={setFormDose}
+                  />
+                </View>
+              </>
+            )}
+
+            {currentStep === 2 && (
+              <>
+                <Text style={[styles.fsMainTitle, dynamicTitleStyle]}>Paso 2: Duración</Text>
+                
+                <Text style={[styles.fsSectionLabel, dynamicSectionLabelStyle]}>Duración del Tratamiento</Text>
+                <View style={styles.fsCard}>
+                  <Text style={[{ marginLeft: 16, marginTop: 14, marginBottom: 8, fontWeight: '700', fontSize: 13, color: '#8e8e93' }]}>DEFINIR DURACIÓN</Text>
+                  
+                  <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, gap: 12, marginBottom: 12 }}>
+                    <TextInput
+                      style={[{ flex: 1, backgroundColor: '#f2f2f7', borderRadius: 8, paddingVertical: 8, paddingHorizontal: 12, fontSize: 16, color: '#000000' }]}
+                      keyboardType="numeric"
+                      placeholder="Ej. 7"
+                      value={durationValue}
+                      onChangeText={setDurationValue}
+                    />
+                    <View style={{ flexDirection: 'row', backgroundColor: '#e5e5ea', borderRadius: 8, padding: 2 }}>
+                      {['horas', 'días', 'meses'].map((unit) => (
+                        <TouchableOpacity
+                          key={unit}
+                          style={[{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 6 }, durationUnit === unit && { backgroundColor: '#ffffff' }]}
+                          onPress={() => setDurationUnit(unit)}
+                        >
+                          <Text style={[{ fontSize: 13, color: '#8e8e93', fontWeight: '700' }, durationUnit === unit && { color: '#007aff' }]}>
+                            {unit}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+
+                  <View style={styles.fsDivider} />
+                  <Text style={[{ marginLeft: 16, marginTop: 14, marginBottom: 8, fontWeight: '700', fontSize: 13, color: '#8e8e93' }]}>SELECCIONAR RANGO EN CALENDARIO</Text>
+                  
+                  <View style={styles.calMonthHeader}>
+                    <Text style={styles.calMonthText}>
+                      {selectedDate.toLocaleString('es-ES', { month: 'long', year: 'numeric' })}
+                    </Text>
+                    <View style={{ flexDirection: 'row', gap: 12 }}>
+                      <TouchableOpacity onPress={() => {
+                        const prevM = new Date(selectedDate.getTime());
+                        prevM.setMonth(prevM.getMonth() - 1);
+                        setSelectedDate(prevM);
+                      }}>
+                        <Text style={styles.calNavBtn}>{"<"}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => {
+                        const nextM = new Date(selectedDate.getTime());
+                        nextM.setMonth(nextM.getMonth() + 1);
+                        setSelectedDate(nextM);
+                      }}>
+                        <Text style={styles.calNavBtn}>{">"}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  <View style={styles.calDaysHeader}>
+                    {['D', 'L', 'M', 'M', 'J', 'V', 'S'].map((day, idx) => (
+                      <Text key={idx} style={[styles.calDayHeaderCell, dynamicHeaderCellStyles]}>{day}</Text>
+                    ))}
+                  </View>
+
+                  <View style={styles.calGrid}>
+                    {getDaysGrid().map((dayDate, idx) => {
+                      if (!dayDate) {
+                        return <View key={`empty-${idx}`} style={dynamicCellEmptyStyles} />;
+                      }
+                      
+                      const isStart = isDateSelected(dayDate);
+                      const isEnd = isDateEndDate(dayDate);
+                      const isInRange = isDateInRange(dayDate);
+                      
+                      return (
+                        <TouchableOpacity
+                          key={dayDate.toISOString()}
+                          style={[
+                            styles.calCell,
+                            dynamicCellStyles,
+                            isStart && styles.calCellSelectedStart,
+                            isEnd && styles.calCellSelectedEnd,
+                            isInRange && styles.calCellInRange
+                          ]}
+                          onPress={() => setSelectedDate(dayDate)}
+                        >
+                          <Text style={[
+                            styles.calCellText,
+                            (isStart || isEnd) && styles.calCellTextSelected,
+                            isInRange && styles.calCellTextInRange
+                          ]}>
+                            {dayDate.getDate()}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                {/* Treatment Duration Dates Card */}
+                <Text style={styles.fsSectionLabel}>Duración estimada</Text>
+                <View style={styles.fsCard}>
+                  <View style={styles.fsDurationRow}>
+                    <View style={styles.fsDurationCol}>
+                      <Text style={styles.fsDurationLabel}>FECHA INICIO</Text>
+                      <Text style={styles.fsDurationVal}>{getStartDateString()}</Text>
+                    </View>
+                    <View style={styles.fsDurationCol}>
+                      <Text style={styles.fsDurationLabel}>FECHA FIN</Text>
+                      <Text style={styles.fsDurationVal}>{getEndDateString()}</Text>
+                    </View>
+                  </View>
+                </View>
+              </>
+            )}
+
+            {currentStep === 3 && (
+              <>
+                <Text style={[styles.fsMainTitle, dynamicTitleStyle]}>Paso 3: Frecuencia y Horarios</Text>
+                
+                <Text style={[styles.fsSectionLabel, dynamicSectionLabelStyle]}>¿Cada cuánto lo tomarás?</Text>
+                <View style={[styles.fsCard, { marginBottom: 16 }]}>
+                  <View style={styles.fsCardRow}>
+                    <Text style={styles.fsCardText}>{formFrequency}</Text>
+                    <TouchableOpacity onPress={() => setShowFreqDropdown(!showFreqDropdown)}>
+                      <Text style={styles.fsCardLink}>Cambiar</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {showFreqDropdown && (
+                    <View style={styles.fsDropdown}>
+                      {['Cada 4 horas', 'Cada 6 horas', 'Cada 8 horas', 'Cada 12 horas', 'Cada 24 horas', 'Una vez al día'].map((opt) => (
+                        <TouchableOpacity 
+                          key={opt} 
+                          style={styles.fsDropdownItem}
+                          onPress={() => handleFrequencyChange(opt)}
+                        >
+                          <Text style={[styles.fsDropdownText, formFrequency === opt && styles.fsDropdownTextActive]}>
+                            {opt}
+                          </Text>
+                          {formFrequency === opt && <Check color="#007aff" size={16} />}
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </View>
+
+                {/* Primera Dosis */}
+                <Text style={styles.fsSectionLabel}>Primera dosis</Text>
+                <View style={[styles.fsCard, { marginBottom: 16, padding: 16 }]}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#8e8e93', marginBottom: 4 }}>FECHA DE LA PRIMERA DOSIS</Text>
+                  <Text style={{ fontSize: 16, color: '#000000', fontWeight: '600', marginBottom: 14 }}>
+                    {getStartDateString()} (Configurada en el Paso 2)
+                  </Text>
+                  
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#8e8e93', marginBottom: 4 }}>HORA DE LA PRIMERA DOSIS</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Text style={{ fontSize: 18, color: '#007aff', fontWeight: '700' }}>
+                      {scheduledTimes[0] || '08:00 AM'}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: '#8e8e93', fontStyle: 'italic' }}>
+                      Edita abajo para reajustar la serie
+                    </Text>
+                  </View>
+                </View>
+
+                <Text style={styles.fsSectionLabel}>¿A qué horas deseas recibir recordatorios?</Text>
+                <View style={styles.fsCard}>
+                  {scheduledTimes.map((time, idx) => (
+                    <View key={idx}>
+                      {idx > 0 && <View style={styles.fsDivider} />}
+                      <View style={styles.fsCardRow}>
+                        <View style={styles.fsRowLeft}>
+                          <TouchableOpacity 
+                            style={styles.fsMinusBtn}
+                            onPress={() => {
+                              setScheduledTimes(prev => prev.filter((_, i) => i !== idx));
+                            }}
+                          >
+                            <View style={styles.fsMinusInner} />
+                          </TouchableOpacity>
+                          <TouchableOpacity 
+                            style={styles.fsTimePill}
+                            onPress={() => {
+                              const [h, mAmPm] = time.split(':');
+                              const [m, ampm] = mAmPm.split(' ');
+                              setTempHour(h);
+                              setTempMinute(m);
+                              setTempAmPm(ampm);
+                              setEditingTimeIndex(idx);
+                            }}
+                          >
+                            <Text style={styles.fsTimePillText}>{time}</Text>
+                          </TouchableOpacity>
+                        </View>
+                        <Text style={styles.fsDoseLabel}>{formDose || '1 dosis'}</Text>
+                      </View>
+
+                      {/* Inline Time Editor */}
+                      {editingTimeIndex === idx && (
+                        <View style={styles.inlineEditor}>
+                          <View style={styles.inlineInputs}>
+                            <TextInput
+                              style={styles.inlineInput}
+                              keyboardType="numeric"
+                              maxLength={2}
+                              value={tempHour}
+                              onChangeText={setTempHour}
+                            />
+                            <Text style={styles.inlineColon}>:</Text>
+                            <TextInput
+                              style={styles.inlineInput}
+                              keyboardType="numeric"
+                              maxLength={2}
+                              value={tempMinute}
+                              onChangeText={setTempMinute}
+                            />
+                            <View style={styles.inlineAmPmContainer}>
+                              {['AM', 'PM'].map((mode) => (
+                                <TouchableOpacity
+                                  key={mode}
+                                  style={[styles.inlineAmPmBtn, tempAmPm === mode && styles.inlineAmPmBtnActive]}
+                                  onPress={() => setTempAmPm(mode)}
+                                >
+                                  <Text style={[styles.inlineAmPmText, tempAmPm === mode && styles.inlineAmPmTextActive]}>
+                                    {mode}
+                                  </Text>
+                                </TouchableOpacity>
+                              ))}
+                            </View>
+                          </View>
+                          <TouchableOpacity 
+                            style={styles.inlineSaveBtn}
+                            onPress={() => {
+                              const formattedHr = tempHour.padStart(2, '0');
+                              const formattedMin = tempMinute.padStart(2, '0');
+                              const updatedTimes = calculateTimesFromFrequency(formattedHr, formattedMin, tempAmPm, formFrequency);
+                              setScheduledTimes(updatedTimes);
+                              
+                              setTimeHour(formattedHr);
+                              setTimeMinute(formattedMin);
+                              setTimeAmPm(tempAmPm);
+                              setEditingTimeIndex(null);
+                            }}
+                          >
+                            <Check color="#ffffff" size={16} />
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
+                  ))}
+
+                  <View style={styles.fsDivider} />
+                  
+                  {/* Add a Time Row */}
+                  <TouchableOpacity 
+                    style={styles.fsCardRow} 
+                    onPress={() => setScheduledTimes(prev => [...prev, "08:00 AM"])}
+                  >
+                    <View style={styles.fsRowLeft}>
+                      <View style={styles.fsPlusBtn}>
+                        <Plus color="#ffffff" size={14} />
+                      </View>
+                      <Text style={styles.fsAddText}>Añadir toma</Text>
+                    </View>
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={styles.fsNote}>
+                  Si programas un horario, recibirás notificaciones para tomar tus medicamentos a tiempo.
+                </Text>
+              </>
+            )}
+
+            {currentStep === 4 && (
+              <>
+                <Text style={[styles.fsMainTitle, dynamicTitleStyle]}>Paso 4: Personalizar Icono</Text>
+                <Text style={[styles.fsSectionLabel, dynamicSectionLabelStyle]}>Selecciona el icono que mejor represente tu toma</Text>
+                <View style={[styles.fsCard, { flexDirection: 'row', flexWrap: 'wrap', gap: 16, padding: 16, justifyContent: 'center' }]}>
+                  {[
+                    { id: 'pill', component: <Pill color={formIcon === 'pill' ? '#ffffff' : '#007aff'} size={24} />, bg: '#c4d2ff30', label: 'Pastilla' },
+                    { id: 'droplet', component: <Droplet color={formIcon === 'droplet' ? '#ffffff' : '#34c759'} size={24} />, bg: '#e0f7fa', label: 'Gotas' },
+                    { id: 'flask', component: <FlaskConical color={formIcon === 'flask' ? '#ffffff' : '#ff9500'} size={24} />, bg: '#efebe9', label: 'Jarabe' },
+                    { id: 'syringe', component: <Syringe color={formIcon === 'syringe' ? '#ffffff' : '#ff3b30'} size={24} />, bg: '#ffebee', label: 'Inyección' },
+                    { id: 'thermometer', component: <Thermometer color={formIcon === 'thermometer' ? '#ffffff' : '#00b0ff'} size={24} />, bg: '#e1f5fe', label: 'Termómetro' },
+                    { id: 'heart', component: <Heart color={formIcon === 'heart' ? '#ffffff' : '#e91e63'} size={24} />, bg: '#fce4ec', label: 'Vitales' },
+                  ].map((item) => (
+                    <TouchableOpacity
+                      key={item.id}
+                      style={[
+                        styles.iconSelectButton,
+                        { backgroundColor: formIcon === item.id ? '#007aff' : item.bg, width: 72, height: 72, justifyContent: 'center', alignItems: 'center' },
+                        formIcon === item.id && styles.iconSelectButtonActive
+                      ]}
+                      onPress={() => {
+                        setFormIcon(item.id);
+                        setFormIconBg(item.bg);
+                      }}
+                    >
+                      {item.component}
+                      <Text style={{ fontSize: 10, marginTop: 4, fontWeight: '600', color: formIcon === item.id ? '#ffffff' : '#737685' }}>{item.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            )}
+
+            {currentStep === 5 && (
+              <>
+                <Text style={[styles.fsMainTitle, dynamicTitleStyle]}>Resumen del Plan</Text>
+                <Text style={[styles.fsSectionLabel, dynamicSectionLabelStyle]}>Todo listo para guardar</Text>
+                
+                <View style={[styles.fsCard, { padding: 0, backgroundColor: '#ffffff', borderRadius: 16, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, elevation: 2 }]}>
+                  {/* Header/Main Medicine Card with background tint */}
+                  <View style={{ backgroundColor: '#f0f4ff', padding: 20, borderTopLeftRadius: 16, borderTopRightRadius: 16, flexDirection: 'row', alignItems: 'center' }}>
+                    <View style={{ backgroundColor: '#ffffff', width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', marginRight: 16, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5, elevation: 1 }}>
+                      {renderAlarmIcon(formIcon, "#007aff")}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 20, fontWeight: '800', color: '#003d9b' }}>{formMedName || 'Sin Nombre'}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                        <Pill size={13} color="#737685" style={{ marginRight: 4 }} />
+                        <Text style={{ fontSize: 14, color: '#737685', fontWeight: '500' }}>{formDose || 'Sin Dosis'}</Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Summary Details */}
+                  <View style={{ padding: 20, gap: 16 }}>
+                    {/* Frecuencia Row */}
+                    <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+                      <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: '#e8f5e9', justifyContent: 'center', alignItems: 'center', marginRight: 12, marginTop: 2 }}>
+                        <Activity size={16} color="#34c759" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#8e8e93', textTransform: 'uppercase', letterSpacing: 0.5 }}>Frecuencia</Text>
+                        <Text style={{ fontSize: 16, color: '#191c1e', fontWeight: '600', marginTop: 2 }}>{formFrequency}</Text>
+                      </View>
+                    </View>
+
+                    {/* Duración Row */}
+                    <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+                      <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: '#fff8e1', justifyContent: 'center', alignItems: 'center', marginRight: 12, marginTop: 2 }}>
+                        <Calendar size={16} color="#ffb300" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#8e8e93', textTransform: 'uppercase', letterSpacing: 0.5 }}>Duración</Text>
+                        <Text style={{ fontSize: 16, color: '#191c1e', fontWeight: '600', marginTop: 2 }}>
+                          {durationValue} {durationUnit}
+                        </Text>
+                        <Text style={{ fontSize: 13, color: '#737685', marginTop: 1, fontWeight: '400' }}>
+                          Del {getStartDateString()} al {getEndDateString()}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Horarios Row */}
+                    <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+                      <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: '#e1f5fe', justifyContent: 'center', alignItems: 'center', marginRight: 12, marginTop: 2 }}>
+                        <Clock size={16} color="#00b0ff" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#8e8e93', textTransform: 'uppercase', letterSpacing: 0.5 }}>Recordatorios ({scheduledTimes.length})</Text>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                          {scheduledTimes.map((time, idx) => (
+                            <View key={idx} style={{ backgroundColor: '#f0f4ff', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: '#d0e0ff' }}>
+                              <Text style={{ fontSize: 13, fontWeight: '700', color: '#007aff' }}>{time}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              </>
+            )}
+          </ScrollView>
+          {/* Next / Action Button Row */}
+          <View style={styles.fsFooter}>
+            <TouchableOpacity 
+              style={styles.fsNextBtn} 
+              onPress={() => {
+                if (currentStep < 5) {
+                  setCurrentStep(currentStep + 1);
+                } else {
+                  handleSaveAlarm();
+                }
+              }}
+            >
+              <Text style={styles.fsNextBtnText}>
+                {currentStep < 5 
+                  ? 'Continuar' 
+                  : (queue.length > 0 && currentQueueIndex + 1 < queue.length ? 'Siguiente Medicamento' : 'Guardar Alarma')}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </Modal>
+
+      {/* Real-time Alarm Ringing Overlay */}
+      {activeAlarm && (
+        <AlarmTriggerOverlay
+          visible={!!activeAlarm}
+          medicationName={activeAlarm.medication.name}
+          medicationDose={activeAlarm.medication.dose}
+          medicationIcon={activeAlarm.medication.icon}
+          medicationIconBg={activeAlarm.medication.iconBg}
+          medicationFrequency={activeAlarm.medication.frequency}
+          alarmTime={activeAlarm.alarm.time}
+          onTake={() => handleAlarmTake(activeAlarm.medication.id, activeAlarm.alarm.id)}
+          onSnooze={() => handleAlarmSnooze(activeAlarm.medication.id, activeAlarm.alarm.id)}
+        />
+      )}
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#f8f9fb',
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    backgroundColor: '#ffffff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#edeef0',
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  doctorAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#f0f0f3',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+    borderWidth: 1,
+    borderColor: '#edeef0',
+  },
+  doctorAvatarText: {
+    fontSize: 18,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#003d9b',
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 140, // Extra padding at the bottom
+  },
+  progressCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#edeef0',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  progressCardLeft: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  progressCardTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#003d9b',
+    marginBottom: 4,
+  },
+  progressCardDesc: {
+    fontSize: 13,
+    color: '#737685',
+    lineHeight: 18,
+    marginBottom: 10,
+  },
+  completedBadge: {
+    backgroundColor: '#82f9be',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    alignSelf: 'flex-start',
+  },
+  completedBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#00734c',
+  },
+  progressRingWrapper: {
+    width: 70,
+    height: 70,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  progressRingOuter: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    borderWidth: 6,
+    borderColor: '#006c47', // Completed color
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  progressRingInner: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  progressPercentText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#006c47',
+  },
+  newAlarmCard: {
+    backgroundColor: '#003d9b',
+    borderRadius: 16,
+    padding: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  newAlarmLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  newAlarmIconWrapper: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: '#ffffff',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  newAlarmTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#ffffff',
+  },
+  newAlarmDesc: {
+    fontSize: 12,
+    color: '#ffffffd0',
+    lineHeight: 16,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#191c1e',
+    marginBottom: 14,
+  },
+  alarmCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#edeef0',
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  inactiveCard: {
+    opacity: 0.6,
+  },
+  alarmContent: {
+    flex: 1,
+  },
+  timeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  alarmTime: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#191c1e',
+  },
+  timeBadge: {
+    backgroundColor: '#ffddb3',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginLeft: 8,
+  },
+  timeBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#624000',
+  },
+  alarmMedName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#191c1e',
+  },
+  alarmDose: {
+    fontSize: 12,
+    color: '#737685',
+    marginTop: 2,
+  },
+  inactiveText: {
+    textDecorationLine: 'line-through',
+    color: '#737685',
+  },
+  completedLink: {
+    alignItems: 'center',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  completedLinkText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#737685',
+    textDecorationLine: 'underline',
+  },
+  fab: {
+    position: 'absolute',
+    bottom: 90, // Positioned safely above the bottom navigation bar
+    right: 20,
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: '#003d9b',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(25, 28, 30, 0.6)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingTop: 24,
+    paddingHorizontal: 24,
+    paddingBottom: 40,
+    maxHeight: '85%',
+  },
+  // Fullscreen Modal Styles
+  fsContainer: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+  },
+  fsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) + 28 : 48,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f2f2f7',
+    backgroundColor: '#ffffff',
+  },
+  fsHeaderLeft: {
+    width: 100,
+    alignItems: 'flex-start',
+  },
+  fsHeaderLink: {
+    color: '#007aff',
+    fontSize: 17,
+  },
+  fsHeaderLinkCancel: {
+    color: '#007aff',
+    fontSize: 17,
+  },
+  fsHeaderTitleCenter: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  fsHeaderMedName: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#000000',
+  },
+  fsHeaderMedDose: {
+    fontSize: 13,
+    color: '#8e8e93',
+    marginTop: 1,
+  },
+  fsHeaderRight: {
+    width: 100,
+    alignItems: 'flex-end',
+  },
+  fsBody: {
+    flex: 1,
+    backgroundColor: '#f2f2f7',
+  },
+  fsBodyContent: {
+    paddingBottom: 60,
+  },
+  fsCalendarWrapper: {
+    alignItems: 'center',
+    marginTop: 24,
+    marginBottom: 16,
+  },
+  fsCalendarIconBg: {
+    width: 80,
+    height: 80,
+    borderRadius: 20,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e5e5ea',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 12,
+  },
+  fsDotsRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginVertical: 3,
+  },
+  fsDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  fsMainTitle: {
+    fontSize: 34,
+    fontWeight: '800',
+    textAlign: 'center',
+    color: '#000000',
+    marginBottom: 24,
+  },
+  fsSectionLabel: {
+    fontSize: 13,
+    color: '#8e8e93',
+    marginHorizontal: 20,
+    marginTop: 20,
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    fontWeight: '500',
+  },
+  fsCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    marginHorizontal: 16,
+    overflow: 'hidden',
+    paddingVertical: 4,
+  },
+  fsCardRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  fsCardText: {
+    fontSize: 17,
+    color: '#000000',
+  },
+  fsCardLink: {
+    fontSize: 17,
+    color: '#007aff',
+  },
+  fsDivider: {
+    height: 1,
+    backgroundColor: '#e5e5ea',
+    marginLeft: 16,
+  },
+  fsInput: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 17,
+    color: '#000000',
+  },
+  fsDropdown: {
+    borderTopWidth: 1,
+    borderTopColor: '#e5e5ea',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  fsDropdownItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  fsDropdownText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  fsDropdownTextActive: {
+    color: '#007aff',
+    fontWeight: '600',
+  },
+  fsRowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  fsMinusBtn: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#ff3b30',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  fsMinusInner: {
+    width: 10,
+    height: 2,
+    backgroundColor: '#ffffff',
+  },
+  fsTimePill: {
+    backgroundColor: '#e5e5ea',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  fsTimePillText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#000000',
+  },
+  fsDoseLabel: {
+    fontSize: 16,
+    color: '#007aff',
+    fontWeight: '500',
+  },
+  fsPlusBtn: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#34c759',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  fsAddText: {
+    fontSize: 17,
+    color: '#007aff',
+    fontWeight: '500',
+  },
+  fsNote: {
+    fontSize: 13,
+    color: '#8e8e93',
+    marginHorizontal: 20,
+    marginTop: 8,
+    lineHeight: 18,
+  },
+  iconSelectButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  iconSelectButtonActive: {
+    borderColor: '#007aff',
+  },
+  iconSelectText: {
+    fontSize: 24,
+  },
+  fsDurationRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  fsDurationCol: {
+    flex: 1,
+  },
+  fsDurationLabel: {
+    fontSize: 11,
+    color: '#8e8e93',
+    marginBottom: 4,
+  },
+  fsDurationVal: {
+    fontSize: 17,
+    color: '#000000',
+    fontWeight: '500',
+  },
+  fsFooter: {
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e5ea',
+    backgroundColor: '#ffffff',
+  },
+  fsNextBtn: {
+    backgroundColor: '#007aff',
+    borderRadius: 14,
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  fsNextBtnText: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#ffffff',
+  },
+  inlineEditor: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#f2f2f7',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e5ea',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  inlineInputs: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  inlineInput: {
+    width: 44,
+    height: 36,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#d1d1d6',
+    borderRadius: 6,
+    textAlign: 'center',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  inlineColon: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#8e8e93',
+  },
+  inlineAmPmContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#e5e5ea',
+    borderRadius: 8,
+    padding: 2,
+  },
+  inlineAmPmBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+  },
+  inlineAmPmBtnActive: {
+    backgroundColor: '#ffffff',
+  },
+  inlineAmPmText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#8e8e93',
+  },
+  inlineAmPmTextActive: {
+    color: '#007aff',
+  },
+  inlineSaveBtn: {
+    backgroundColor: '#34c759',
+    padding: 8,
+    borderRadius: 8,
+  },
+  // Custom Calendar Styles
+  calMonthHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  calMonthText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#000000',
+    textTransform: 'capitalize',
+  },
+  calNavBtn: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#007aff',
+    paddingHorizontal: 6,
+  },
+  calDaysHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f2f2f7',
+  },
+  calDayHeaderCell: {
+    width: 32,
+    textAlign: 'center',
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#8e8e93',
+  },
+  calGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-around',
+    paddingVertical: 10,
+    rowGap: 8,
+  },
+  calCell: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  calCellSelected: {
+    backgroundColor: '#007aff',
+  },
+  calCellSelectedStart: {
+    backgroundColor: '#007aff',
+    borderRadius: 18,
+  },
+  calCellSelectedEnd: {
+    backgroundColor: '#34c759',
+    borderRadius: 18,
+  },
+  calCellInRange: {
+    backgroundColor: '#e3f2fd',
+    borderRadius: 0,
+  },
+  calCellTextInRange: {
+    color: '#007aff',
+    fontWeight: '600',
+  },
+  calCellText: {
+    fontSize: 14,
+    color: '#000000',
+    fontWeight: '500',
+  },
+  calCellTextSelected: {
+    color: '#ffffff',
+    fontWeight: '700',
+  },
+  calCellEmpty: {
+    width: 36,
+    height: 36,
+  },
+});
+
