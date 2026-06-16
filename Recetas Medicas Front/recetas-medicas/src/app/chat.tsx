@@ -1,9 +1,57 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, View, ScrollView, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, StatusBar, ActivityIndicator } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, StatusBar, ActivityIndicator, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Wifi, ArrowLeft, ArrowRight, MessageSquare, Camera, Mic, Send, FileText, Check } from 'lucide-react-native';
 import { API_URL } from '../constants/api';
+
+const renderMarkdown = (text: string, defaultColor: string = '#333333') => {
+  if (!text) return null;
+  const lines = text.split('\n');
+  return lines.map((line, lineIndex) => {
+    if (line.trim() === '') {
+      return <View key={lineIndex} style={{ height: 6 }} />;
+    }
+    const isBulletList = line.trim().startsWith('-') || line.trim().startsWith('*');
+    const isNumList = /^\d+\.\s/.test(line.trim());
+    
+    let cleanLine = line;
+    if (isBulletList) {
+      cleanLine = '• ' + line.trim().substring(1).trim();
+    }
+    
+    const parts = cleanLine.split('**');
+    const lineElements = parts.map((part, partIndex) => {
+      const isBold = partIndex % 2 !== 0;
+      return (
+        <Text
+          key={partIndex}
+          style={{
+            fontWeight: isBold ? 'bold' : 'normal',
+            color: defaultColor,
+          }}
+        >
+          {part}
+        </Text>
+      );
+    });
+
+    return (
+      <Text
+        key={lineIndex}
+        style={{
+          fontSize: 15,
+          lineHeight: 22,
+          color: defaultColor,
+          marginBottom: 4,
+          paddingLeft: (isBulletList || isNumList) ? 12 : 0,
+        }}
+      >
+        {lineElements}
+      </Text>
+    );
+  });
+};
 
 export default function ChatScreen() {
   const router = useRouter();
@@ -103,10 +151,11 @@ export default function ChatScreen() {
           <TouchableOpacity onPress={() => router.push('/')} style={{ marginRight: 8, padding: 4 }}>
             <ArrowLeft color="#191c1e" size={22} />
           </TouchableOpacity>
-          <View style={styles.doctorAvatar}>
-            <Text style={styles.doctorAvatarText}>👩‍⚕️</Text>
-          </View>
-          <View style={{ marginLeft: 10 }}>
+          <Image 
+            source={require('@/assets/images/icon.png')} 
+            style={{ width: 28, height: 28, borderRadius: 6, marginRight: 2 }} 
+          />
+          <View style={{ marginLeft: 8 }}>
             <Text style={styles.headerTitle}>MediAssist AI</Text>
             <View style={styles.statusRow}>
               <View style={styles.statusDot} />
@@ -114,7 +163,6 @@ export default function ChatScreen() {
             </View>
           </View>
         </View>
-        <Wifi color="#191c1e" size={20} />
       </View>
 
       <KeyboardAvoidingView 
@@ -148,9 +196,8 @@ export default function ChatScreen() {
             if (msg.role === 'assistant') {
               return (
                 <View key={msg.id} style={styles.botMessageRow}>
-                  <View style={styles.botAvatarCircle} />
                   <View style={styles.botBubble}>
-                    <Text style={styles.msgText}>{msg.content}</Text>
+                    {renderMarkdown(msg.content, '#191c1e')}
                     <Text style={styles.msgTime}>{msg.time}</Text>
                   </View>
                 </View>
@@ -159,14 +206,11 @@ export default function ChatScreen() {
               return (
                 <View key={msg.id} style={styles.userMessageRow}>
                   <View style={styles.userBubble}>
-                    <Text style={[styles.msgText, { color: '#ffffff' }]}>{msg.content}</Text>
+                    {renderMarkdown(msg.content, '#ffffff')}
                     <View style={styles.userTimeRow}>
                       <Text style={styles.userTimeText}>{msg.time}</Text>
                       <Check color="#82f9be" size={12} style={{ marginLeft: 4 }} />
                     </View>
-                  </View>
-                  <View style={styles.userAvatarCircle}>
-                    <Text style={styles.userAvatarEmoji}>👤</Text>
                   </View>
                 </View>
               );
@@ -175,7 +219,6 @@ export default function ChatScreen() {
 
           {sending && (
             <View style={[styles.botMessageRow, { alignItems: 'center', opacity: 0.8 }]}>
-              <View style={styles.botAvatarCircle} />
               <View style={[styles.botBubble, { flexDirection: 'row', alignItems: 'center', gap: 8 }]}>
                 <ActivityIndicator size="small" color="#003d9b" />
                 <Text style={[styles.msgText, { fontStyle: 'italic', color: '#737685' }]}>Tu asistente está escribiendo...</Text>
@@ -202,31 +245,29 @@ export default function ChatScreen() {
 
         {/* Input Bar */}
         <View style={styles.inputBar}>
-          <TouchableOpacity style={styles.inputActionBtn} onPress={() => router.push('/scan')}>
-            <Camera color="#737685" size={20} />
-          </TouchableOpacity>
-          
-          <TextInput 
-            style={styles.textInput} 
-            placeholder="Pregúntale a MediAssist..."
-            value={inputText}
-            onChangeText={setInputText}
-            placeholderTextColor="#737685"
-            onSubmitEditing={() => handleSend()}
-            editable={!sending}
-          />
+          <View style={styles.inputContainer}>
+            <TouchableOpacity style={styles.inputActionBtn} onPress={() => router.push('/scan')}>
+              <Camera color="#737685" size={20} />
+            </TouchableOpacity>
+            
+            <TextInput 
+              style={styles.textInput} 
+              placeholder="Pregúntale a MediAssist..."
+              value={inputText}
+              onChangeText={setInputText}
+              placeholderTextColor="#737685"
+              onSubmitEditing={() => handleSend()}
+              editable={!sending}
+            />
 
-          <TouchableOpacity style={styles.inputActionBtn}>
-            <Mic color="#737685" size={20} />
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={[styles.sendCircleBtn, sending && { opacity: 0.6 }]} 
-            onPress={() => handleSend()}
-            disabled={sending}
-          >
-            <Send color="#ffffff" size={16} />
-          </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.sendCircleBtn, sending && { opacity: 0.6 }]} 
+              onPress={() => handleSend()}
+              disabled={sending}
+            >
+              <Send color="#ffffff" size={16} />
+            </TouchableOpacity>
+          </View>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -236,7 +277,7 @@ export default function ChatScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#f8f9fb',
+    backgroundColor: '#ffffff',
   },
   header: {
     flexDirection: 'row',
@@ -350,13 +391,10 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   botBubble: {
-    flex: 1,
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    borderBottomLeftRadius: 2,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#edeef0',
+    backgroundColor: 'transparent',
+    padding: 8,
+    maxWidth: '85%',
+    marginVertical: 4,
   },
   userMessageRow: {
     flexDirection: 'row',
@@ -378,15 +416,14 @@ const styles = StyleSheet.create({
   },
   userBubble: {
     maxWidth: '80%',
-    backgroundColor: '#003d9b',
-    borderRadius: 16,
-    borderBottomRightRadius: 2,
-    padding: 14,
+    backgroundColor: '#0052cc',
+    borderRadius: 20,
+    padding: 12,
   },
   msgText: {
-    fontSize: 14,
-    color: '#191c1e',
-    lineHeight: 20,
+    fontSize: 15,
+    color: '#333333',
+    lineHeight: 22,
   },
   msgTime: {
     fontSize: 10,
@@ -433,7 +470,7 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   suggestionsWrapper: {
-    backgroundColor: '#f8f9fb',
+    backgroundColor: '#ffffff',
     paddingVertical: 8,
   },
   suggestionsScroll: {
@@ -441,34 +478,47 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   suggestionPill: {
-    backgroundColor: '#edeef0',
+    backgroundColor: '#ffffff',
     borderRadius: 20,
     paddingHorizontal: 16,
     paddingVertical: 8,
     marginRight: 8,
+    borderWidth: 1,
+    borderColor: '#0052cc20',
   },
   suggestionText: {
     fontSize: 13,
-    color: '#191c1e',
-    fontWeight: '500',
+    color: '#0052cc',
+    fontWeight: '600',
   },
   inputBar: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#ffffff',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     borderTopWidth: 1,
-    borderTopColor: '#edeef0',
+    borderTopColor: '#f0f4f8',
+    paddingBottom: Platform.OS === 'ios' ? 24 : 10,
+  },
+  inputContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    borderRadius: 24,
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    paddingBottom: Platform.OS === 'ios' ? 24 : 8, // Gives space at the bottom of the screen
+    height: 48,
+    borderWidth: 1,
+    borderColor: '#0052cc20',
   },
   inputActionBtn: {
     padding: 8,
   },
   textInput: {
     flex: 1,
-    height: 40,
-    paddingHorizontal: 12,
+    height: '100%',
+    paddingHorizontal: 8,
     fontSize: 14,
     color: '#191c1e',
   },
@@ -476,7 +526,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#003d9b',
+    backgroundColor: '#0052cc',
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 6,
