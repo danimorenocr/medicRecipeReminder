@@ -1,97 +1,160 @@
-# MediaAssist AI (Recetas Médicas) - Asistente de Salud Inteligente
+# MediaAssist AI (Recetas Claras) - Asistente de Salud Inteligente Completo
 
-Asistente de salud inteligente multiplataforma diseñado para digitalizar recetas médicas impresas mediante IA, realizar el seguimiento diario de la ingesta de medicamentos y proporcionar un chat interactivo de consulta de síntomas.
+MediaAssist AI (también conocido como **Recetas Claras**) es un ecosistema de salud inteligente diseñado para simplificar la gestión y el seguimiento de tratamientos médicos. Permite a los usuarios digitalizar recetas u órdenes médicas en formato físico (imágenes) mediante Inteligencia Artificial, entender su diagnóstico en lenguaje sencillo, programar alarmas de toma de medicamentos y chatear con un asistente de salud empático.
 
-El proyecto consta de dos partes principales:
-1. **Back (Backend API + Bot de Telegram):** Escrito en Python (FastAPI, SQLite, Groq Llama 3.3, Gemini 2.5 Flash).
-2. **Recetas Medicas Front (Frontend Mobile):** Aplicación móvil multiplataforma escrita en React Native + Expo (TypeScript).
-
----
-
-## 🚀 Características Principales
-
-### 1. Gestión de Perfil y Expediente Médico
-* **Perfil de Usuario Completo:** Almacena nombre, contraseña, fecha de nacimiento, sexo, tipo de sangre (RH), alergias críticas y condiciones médicas preexistentes.
-* **Cálculo Dinámico de Edad:** El backend calcula automáticamente la edad actual a partir de la fecha de nacimiento en múltiples formatos.
-* **Avatar y UI Dinámicos:** El avatar del usuario adapta su emoji según el sexo registrado (`👩` / `👨` / `👤`). Los contactos de emergencia se cargan de forma dinámica con la información del último médico registrado en tus recetas.
-
-### 2. Plan de Medicación e Agenda Interactiva
-* **Acceso de Fechas Rápido e Infinito:** Pestañas para conmutar rápidamente entre **Hoy**, **Mañana** y **Pasado Mañana**, además de un botón de calendario para elegir **cualquier fecha del calendario**.
-* **Filtro de Tratamiento Inteligente:** Los medicamentos solo se muestran en la agenda en los días correspondientes a la duración de su tratamiento (calculado a partir de la fecha de registro).
-* **Control de Alarmas en Tiempo Real:** Permite marcar/desmarcar tomas como completadas para cualquier día. La aplicación almacena la fecha correspondiente de forma explícita en el historial (`YYYY-MM-DD`).
-* **Filtro de Inicio de Tratamiento (Sin tomas pasadas):** Si programas un medicamento hoy a las 10:05 PM, el sistema filtrará tomas del pasado (ej. hoy a las 10:00 AM) basándose en la fecha/hora de creación con una tolerancia de cortesía de 30 minutos.
-
-### 3. Panel de Progreso y Alertas
-* **Anillo de Progreso Dinámico:** El porcentaje del día de hoy se calcula en caliente según el estado real de las tomas (`(tomas completadas / tomas totales) * 100`).
-* **Modal de Historial de Tomas:** Muestra un listado detallado de todas las dosis e instrucciones que el usuario ya ha tomado hoy.
-
-### 4. Consultor de Síntomas Empático (Chat IA)
-* **Algoritmo de Triaje de Dolor:** Identifica si el usuario menciona dolor o malestar físico. En lugar de dar respuestas genéricas, inicia un flujo de 1 o 2 preguntas breves y específicas sobre cómo comenzó el síntoma antes de dar una conclusión clínica breve ligada a sus medicamentos recetados.
+El proyecto está compuesto por:
+1. **Back (Backend API + Bot de Telegram):** Escrito en Python (FastAPI, SQLite, Telegram Bot API, Gemini 2.5 Flash, Llama 3.3).
+2. **Recetas Medicas Front (App Móvil):** Aplicación multiplataforma premium escrita en React Native + Expo (TypeScript).
 
 ---
 
-## 🗃️ Estructura de la Base de Datos (`recetas.db`)
+## 🏗️ Arquitectura General del Sistema
 
-El sistema utiliza SQLite para la persistencia de datos. Las tablas clave son:
+El ecosistema está construido siguiendo principios de **Clean Architecture** (Arquitectura Limpia) en el backend y **File-based Routing** en el frontend:
 
-### 1. Tabla `usuarios`
-Almacena el perfil clínico y credenciales del paciente.
-* `id` (INTEGER PRIMARY KEY AUTOINCREMENT)
-* `username` (TEXT)
-* `password` (TEXT)
-* `fecha_nacimiento` (TEXT)
-* `tipo_sangre` (TEXT)
-* `alergias` (TEXT)
-* `condicion_base` (TEXT)
-* `sexo` (TEXT)
+```
+                       [ USUARIO (Telegram Bot / App Móvil) ]
+                                      │  ▲
+                                      ▼  │ (Interacción / Carga de Recetas)
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│                               APLICACIÓN MÓVIL (EXPO)                                  │
+│ - Pantalla de Inicio (Agenda Interactiva por Fechas, Calendario, Tareas completadas).   │
+│ - Mis Alarmas (Progreso del día, editor premium de horarios, notificaciones locales).  │
+│ - Mi Perfil (Ficha clínica del paciente, contactos de emergencia dinámicos).            │
+│ - Chat Médico & Escáner Integrado (Carga directa de fotos a la API).                    │
+└─────────────────────────────────────┬───────────────────────────────────────────────────┘
+                                      │
+                                      ▼ (Peticiones HTTP Rest / JSON)
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│                                 API FASTAPI (api.py)                                    │
+│ - Endpoints de consulta y almacenamiento (/api/profile, /api/medications, /api/recipes).│
+│ - Canalización del procesamiento de imágenes (/api/recipes/process).                     │
+│ - Endpoint del Asistente Virtual (/api/chat).                                           │
+└─────────────────────────────────────┬───────────────────────────────────────────────────┘
+                                      │
+                                      ▼ (Casos de Uso / Domain Layer)
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│                       PROCESADOR DE RECETAS (ProcessRecipeUseCase)                      │
+│                                                                                         │
+│ 1. Extractor Gemini Vision (Gemini 2.5 Flash): Lee la receta y la estructura en JSON.    │
+│ 2. Diccionario CIE-10 (WHO ICD Service): Resuelve el código médico oficial del síntoma. │
+│ 3. Groq Explainer (Llama 3.3): Redacta una explicación empática en lenguaje cotidiano.   │
+│ 4. OpenFDA Service: Consulta advertencias de uso, contraindicaciones y genéricos.      │
+│ 5. SQLite Repository: Persiste la receta y los medicamentos programando alertas.       │
+└─────────────────────────────────────┬───────────────────────────────────────────────────┘
+                                      │
+                                      ▼ (Base de Datos Local)
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│                              BASE DE DATOS SQLITE (recetas.db)                         │
+│ - Tablas: recetas, medicamentos, usuarios, recordatorios, mensajes_telegram.            │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+```
 
-### 2. Tabla `medicamentos`
-Almacena las especificaciones de cada fármaco y su historial de tomas.
-* `id` (INTEGER PRIMARY KEY AUTOINCREMENT)
+---
+
+## 🔔 Canal de Telegram (Bot Asistente)
+El bot de Telegram (`telegram_bot.py`) actúa como un punto de entrada alternativo e interactivo:
+* **Digitalización Directa:** El usuario envía la foto de la receta al chat del bot.
+* **Alertas Automatizadas:** Al procesarse la receta, el bot ofrece activar alertas repetitivas. Si el usuario acepta, se configuran hilos automáticos (`JobQueue`) que envían recordatorios directamente al chat de Telegram del paciente según la frecuencia de su receta.
+
+---
+
+## 🚀 Módulos y Características Implementadas
+
+### 1. Extracción y Enriquecimiento con IA (Backend Pipeline)
+* **Lector Óptico de Recetas:** Utiliza `gemini-2.5-flash` con esquemas de respuesta estrictos en formato JSON para obtener paciente, clínica, médico, diagnóstico y medicamentos (nombre, dosis, frecuencia, duración).
+* **Traductor de Diagnósticos (CIE-10):** Consulta la base de datos de la OMS (ICD-10) para encontrar el código oficial de la enfermedad.
+* **Explicador de Medicamentos:** Usa Groq con `llama-3.3-70b-versatile` para generar una guía comprensible, respondiendo preguntas clave como: *¿Para qué sirve este medicamento?*, *¿Cómo me ayuda?* y *¿Qué precauciones debo tener?*.
+* **Vínculo Oficial OpenFDA:** Extrae indicaciones, advertencias y dosificación técnica consultando la API oficial de la FDA de Estados Unidos.
+
+### 2. Agenda y Plan de Medicación (Frontend Dashboard)
+* **Agenda Multi-Día Interactiva:** Barra de acceso rápido para **Hoy**, **Mañana** y **Pasado Mañana**, además de un botón de calendario para abrir un selector de fecha en **cualquier día**.
+* **Filtro de Calendario por Tratamiento:** Compara la fecha seleccionada con el inicio y fin de la duración prescrita para cada medicamento.
+* **Filtro de Registro:** Evita mostrar alarmas del pasado el día que se registra el medicamento (ej. si configuras una toma de 12 horas a las 10:05 PM, se oculta la toma ficticia de las 10:00 AM de hoy). Cuenta con un margen de cortesía de 30 minutos.
+* **Registro del Historial:** Puedes marcar y desmarcar tomas como tomadas en cualquier día del calendario. Las tomas se guardan asociadas a su respectiva fecha en formato `YYYY-MM-DD`.
+
+### 3. Gestor de Alarmas y Notificaciones
+* **Cálculo de Dosis y Duración:** Al ingresar un medicamento, puedes escribir la **Cantidad Prescrita** (ej. 10 tabletas) y el sistema calculará automáticamente cuántos días dura el tratamiento en base a la dosis y frecuencia (ej. 1 tableta cada 12 horas = 5 días de duración).
+* **Anillo de Progreso:** Muestra en tiempo real el porcentaje completado de las tomas del día.
+* **Modal de Tomas Completadas:** Detalla las horas y nombres de los medicamentos tomados hoy.
+* **Notificaciones Locales (Background/Foreground):** Integra notificaciones nativas en el móvil a las horas exactas de tus alarmas.
+
+### 4. Expediente Clínico (Perfil del Usuario)
+* **Ficha del Paciente:** Registra credenciales del perfil, fecha de nacimiento, sexo, tipo de sangre (RH), alergias críticas y condiciones médicas de base.
+* **Contactos de Emergencia Dinámicos:** Muestra la información de contacto del último médico que emitió tu receta guardada en el historial.
+
+### 5. Chat Médico Empático
+* **Triaje de Dolor:** Identifica si el usuario expresa dolor o molestias físicas al iniciar un mensaje en el chat, solicitándole información breve antes de ofrecer recomendaciones alineadas con sus medicamentos recetados.
+
+---
+
+## 🗃️ Esquema de la Base de Datos (`recetas.db`)
+
+La persistencia de datos utiliza SQLite. El esquema consta de las siguientes tablas principales:
+
+### `recetas`
+Almacena las cabeceras de los diagnósticos y doctores.
+* `id` (INTEGER PRIMARY KEY)
+* `paciente_nombre`, `paciente_fecha_nacimiento`, `paciente_cedula`, `paciente_telefono` (TEXT)
+* `clinica_nombre`, `clinica_direccion` (TEXT)
+* `medico_nombre`, `medico_especialidad` (TEXT)
+* `fecha_receta` (TEXT)
+* `telegram_chat_id`, `telegram_message_id`, `telegram_file_id` (TEXT/INTEGER)
+* `diagnostico_codigo`, `diagnostico_descripcion` (TEXT)
+* `explicacion` (TEXT - HTML/Markdown explicativo generado por Groq)
+* `created_at` (TIMESTAMP)
+
+### `medicamentos`
+Almacena el detalle de los fármacos.
+* `id` (INTEGER PRIMARY KEY)
 * `receta_id` (INTEGER, FOREIGN KEY)
-* `nombre` (TEXT)
-* `dosis` (TEXT)
-* `frecuencia` (TEXT)
-* `duracion` (TEXT)
+* `nombre`, `dosis`, `frecuencia`, `duracion` (TEXT)
+* `brand_name`, `generic_name`, `manufacturer_name` (TEXT - extraídos de OpenFDA)
+* `indicaciones_fda`, `advertencias_fda`, `dosage_fda` (TEXT)
+* `icon`, `iconBg` (TEXT)
 * `active` (BOOLEAN)
-* `alarms_json` (TEXT)
-* `history_json` (TEXT - JSON con las tomas realizadas por fecha)
-* `created_at` (TEXT - Fecha y hora exacta de registro)
+* `alarms_json` (TEXT - JSON con las horas programadas)
+* `history_json` (TEXT - JSON con los registros de tomas finalizadas por fecha)
+* `created_at` (TEXT - Timestamp exacto de creación para cálculos de filtro)
+
+### `usuarios`
+* `id` (INTEGER PRIMARY KEY)
+* `username`, `password`, `fecha_nacimiento`, `tipo_sangre`, `alergias`, `condicion_base`, `sexo` (TEXT)
 
 ---
 
-## 🛠️ Instalación y Ejecución
+## 🛠️ Requisitos e Instalación
 
-### 1. Configuración de API & Bot (Backend)
-1. Navega al directorio del backend:
+### Backend (Python)
+1. Ve a la carpeta `Back`:
    ```bash
    cd Back
    ```
-2. Instala los requerimientos:
+2. Instala dependencias:
    ```bash
    pip install -r requirements.txt
    ```
-3. Configura el archivo `.env` en la raíz de `Back/` con tus llaves de API:
+3. Configura el archivo `.env`:
    ```env
    TELEGRAM_TOKEN=tu_token_de_telegram
    GROQ_API_KEY=tu_token_de_groq
    GEMINI_API_KEY=tu_token_de_gemini
    ```
-4. Inicia el servidor de desarrollo FastAPI:
+4. Corre la API en puerto 8000:
    ```bash
    uvicorn api:app --reload --host 0.0.0.0 --port 8000
    ```
 
-### 2. Configuración de la App Móvil (Frontend)
-1. Navega al directorio del frontend:
+### Frontend (React Native / Expo)
+1. Ve a la carpeta `Recetas Medicas Front/recetas-medicas`:
    ```bash
    cd "Recetas Medicas Front/recetas-medicas"
    ```
-2. Instala las dependencias de node:
+2. Instala los paquetes de Node:
    ```bash
    npm install
    ```
-3. Ejecuta el servidor de Metro:
+3. Inicia la aplicación móvil:
    ```bash
    npx expo start
    ```
