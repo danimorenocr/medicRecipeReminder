@@ -116,6 +116,163 @@ async def delete_medication(id: int):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+import math
+import httpx
+from config import GOOGLE_PLACES_API_KEY
+
+def calcular_distancia(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    # Retorna la distancia en metros utilizando la fórmula de Haversine
+    R = 6371000 # Radio de la Tierra en metros
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    delta_phi = math.radians(lat2 - lat1)
+    delta_lambda = math.radians(lon2 - lon1)
+    
+    a = math.sin(delta_phi/2)**2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda/2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return R * c
+
+def obtener_hospitales_simulados(lat: float, lng: float) -> list:
+    # Clínicas de referencia en Colombia (Bogotá / Medellín / Cali etc.)
+    # Generamos clínicas simuladas alrededor de la ubicación actual del usuario sumando pequeños offsets
+    clinicas_base = [
+        {"name": "Clínica del Country (Urgencias 24h)", "rating": 4.5, "user_ratings_total": 452, "address": "Cra. 16 #82-57, Bogotá", "lat_offset": 0.005, "lng_offset": -0.004},
+        {"name": "Hospital Universitario Fundación Santa Fe (Urgencias 24h)", "rating": 4.8, "user_ratings_total": 1250, "address": "Av. 9 #119-76, Bogotá", "lat_offset": 0.012, "lng_offset": 0.015},
+        {"name": "Clínica Marly (Servicio Urgencias)", "rating": 4.1, "user_ratings_total": 310, "address": "Cra. 13 #49-40, Bogotá", "lat_offset": -0.010, "lng_offset": -0.008},
+        {"name": "Hospital Universitario San Ignacio (Urgencias)", "rating": 4.3, "user_ratings_total": 890, "address": "Cra. 7 #40-62, Bogotá", "lat_offset": -0.018, "lng_offset": -0.005},
+        {"name": "Clínica Reina Sofía (Colsanitas)", "rating": 4.2, "user_ratings_total": 540, "address": "Cra. 21 #127-13, Bogotá", "lat_offset": 0.022, "lng_offset": 0.005},
+    ]
+    
+    hospitals = []
+    for idx, c in enumerate(clinicas_base):
+        h_lat = lat + c["lat_offset"]
+        h_lng = lng + c["lng_offset"]
+        dist = calcular_distancia(lat, lng, h_lat, h_lng)
+        
+        hospitals.append({
+            "place_id": f"mock_hospital_{idx}",
+            "name": c["name"],
+            "rating": c["rating"],
+            "user_ratings_total": c["user_ratings_total"],
+            "vicinity": c["address"],
+            "geometry": {
+                "location": {
+                    "lat": h_lat,
+                    "lng": h_lng
+                }
+            },
+            "distance": round(dist),
+            "open_now": True
+        })
+    return hospitals
+
+@app.get("/api/hospitals/nearby")
+async def get_nearby_hospitals(lat: float, lng: float, radius: float = 5000):
+    # Si la clave de Google Places no está configurada, usar simulación
+    if not GOOGLE_PLACES_API_KEY or GOOGLE_PLACES_API_KEY.strip() == "":
+        hospitals = obtener_hospitales_simulados(lat, lng)
+        is_mock = True
+    else:
+        try:
+            url = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
+            # Usamos un keyword simple para evitar que Google sobre-filtre y deje pocos resultados.
+            # Delegamos el filtrado de exclusiones (veterinarias, laboratorios) al código Python.
+            params = {
+                "location": f"{lat},{lng}",
+                "radius": radius,
+                "type": "hospital",
+                "keyword": "urgencias",
+                "key": GOOGLE_PLACES_API_KEY
+            }
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, params=params, timeout=10.0)
+                if response.status_code != 200:
+                    raise Exception("Error en la respuesta de Google Places API")
+                data = response.json()
+                
+                if data.get("status") not in ["OK", "ZERO_RESULTS"]:
+                    print(f"Google Places API retorno status: {data.get('status')}. Usando fallback simulado.")
+                    hospitals = obtener_hospitales_simulados(lat, lng)
+                    is_mock = True
+                else:
+                    results = data.get("results", [])
+                    hospitals = []
+                    for r in results:
+                        name_lower = r.get("name", "").lower()
+                        vicinity_lower = r.get("vicinity", "").lower()
+                        
+                        # Filtro manual de seguridad adicional para excluir veterinarias, mascotas y laboratorios
+                        exclude_words = [
+                            "veterinaria", "veterinario", "mascota", "pet ", " pets", "animal", "veterinary",
+                            "laboratorio", "laboratorios", " lab", "clinilab", "diagnostico", "diagnostica"
+                        ]
+                        if any(w in name_lower or w in vicinity_lower for w in exclude_words):
+                            continue
+                            
+                        geom = r.get("geometry", {})
+                        loc = geom.get("location", {})
+                        h_lat = loc.get("lat")
+                        h_lng = loc.get("lng")
+                        
+                        dist = 999999
+                        if h_lat is not None and h_lng is not None:
+                            dist = calcular_distancia(lat, lng, h_lat, h_lng)
+                            
+                        hospitals.append({
+                            "place_id": r.get("place_id"),
+                            "name": r.get("name"),
+                            "rating": r.get("rating", 0.0),
+                            "user_ratings_total": r.get("user_ratings_total", 0),
+                            "vicinity": r.get("vicinity", "Dirección no disponible"),
+                            "geometry": geom,
+                            "distance": round(dist) if dist != 999999 else None,
+                            "open_now": r.get("opening_hours", {}).get("open_now", True)
+                        })
+                    is_mock = False
+        except Exception as e:
+            print(f"Error consultando Google Places API: {e}. Usando fallback simulado.")
+            hospitals = obtener_hospitales_simulados(lat, lng)
+            is_mock = True
+
+    if not hospitals:
+        return {"hospitals": [], "recommended_id": None, "closest_id": None, "best_rated_id": None, "is_mock": is_mock}
+
+    hospitals_sorted_by_dist = sorted([h for h in hospitals if h["distance"] is not None], key=lambda x: x["distance"])
+    closest_hospital = hospitals_sorted_by_dist[0] if hospitals_sorted_by_dist else None
+    
+    hospitals_with_ratings = [h for h in hospitals if h.get("rating", 0) > 0 and h.get("user_ratings_total", 0) >= 3]
+    if not hospitals_with_ratings:
+        hospitals_with_ratings = hospitals
+    best_rated_hospital = sorted(hospitals_with_ratings, key=lambda x: x["rating"], reverse=True)[0] if hospitals_with_ratings else None
+    
+    def calculate_score(h):
+        dist_km = (h["distance"] or 1000) / 1000.0
+        rating = h.get("rating") or 3.5
+        if h.get("user_ratings_total", 0) < 5:
+            rating -= 0.5
+        return rating / (1.0 + 0.3 * dist_km)
+        
+    recommended_hospital = sorted(hospitals, key=calculate_score, reverse=True)[0]
+
+    for h in hospitals:
+        tags = []
+        if recommended_hospital and h["place_id"] == recommended_hospital["place_id"]:
+            tags.append("recommended")
+        if closest_hospital and h["place_id"] == closest_hospital["place_id"]:
+            tags.append("closest")
+        if best_rated_hospital and h["place_id"] == best_rated_hospital["place_id"]:
+            tags.append("best_rated")
+        h["tags"] = tags
+
+    return {
+        "hospitals": hospitals_sorted_by_dist,
+        "recommended_id": recommended_hospital["place_id"] if recommended_hospital else None,
+        "closest_id": closest_hospital["place_id"] if closest_hospital else None,
+        "best_rated_id": best_rated_hospital["place_id"] if best_rated_hospital else None,
+        "is_mock": is_mock
+    }
+
+
 @app.post("/api/chat")
 async def chat(request: dict):
     message = request.get("message")

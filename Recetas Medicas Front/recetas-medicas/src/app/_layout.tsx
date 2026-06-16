@@ -1,6 +1,6 @@
 import { Tabs } from 'expo-router';
 import { useColorScheme } from 'react-native';
-import { MessageSquare, Home, FileText, Bell, User } from 'lucide-react-native';
+import { MessageSquare, Home, FileText, Bell, User, MapPin } from 'lucide-react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 export default function TabLayout() {
@@ -68,7 +68,7 @@ export default function TabLayout() {
             tabBarIcon: ({ color }) => <User color={color} size={20} />,
           }}
         />
-        {/* Ocultar explore, scan y medication-alarms de las pestañas principales */}
+        {/* Ocultar explore de las pestañas principales pero mantener en la ruta */}
         <Tabs.Screen
           name="explore"
           options={{

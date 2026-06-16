@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, StatusBar, TextInput, ActivityIndicator, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Wifi, Plus, Phone, FileText, Calendar, ShieldAlert, Award, Heart, Edit2, Lock, User as UserIcon, Save, X, HeartPulse } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
 import { API_URL } from '../constants/api';
 
 export default function ProfileScreen() {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<any>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -483,6 +485,23 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+        {/* Urgencias y Hospitales Card */}
+        <TouchableOpacity 
+          style={styles.urgenciasCard}
+          onPress={() => router.push('/explore')}
+        >
+          <View style={styles.urgenciasHeaderRow}>
+            <View style={styles.urgenciasIconBg}>
+              <Text style={{ fontSize: 20 }}>🚨</Text>
+            </View>
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={styles.urgenciasTitle}>Urgencias y Hospitales 24h</Text>
+              <Text style={styles.urgenciasDesc}>Localizar clínica recomendada por GPS</Text>
+            </View>
+            <Text style={styles.urgenciasArrow}>➔</Text>
+          </View>
+        </TouchableOpacity>
+
       </ScrollView>
     </SafeAreaView>
   );
@@ -891,5 +910,40 @@ const styles = StyleSheet.create({
     color: '#003d9b',
     fontSize: 14,
     fontWeight: '700',
+  },
+  urgenciasCard: {
+    backgroundColor: '#ffebe9',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#ffd0cb',
+    padding: 16,
+    marginBottom: 20,
+  },
+  urgenciasHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  urgenciasIconBg: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: '#ffdbd8',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  urgenciasTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#ba1a1a',
+  },
+  urgenciasDesc: {
+    fontSize: 12,
+    color: '#410002',
+    marginTop: 2,
+  },
+  urgenciasArrow: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#ba1a1a',
   },
 });

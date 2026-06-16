@@ -291,6 +291,23 @@ export default function SummaryScreen() {
           </View>
         </View>
 
+        {/* Emergency Banner */}
+        <TouchableOpacity 
+          style={styles.emergencyBanner} 
+          onPress={() => router.push('/explore')}
+        >
+          <View style={styles.emergencyHeaderRow}>
+            <View style={styles.emergencyIconBg}>
+              <Text style={{ fontSize: 20 }}>🚨</Text>
+            </View>
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={styles.emergencyTitle}>Urgencias y Hospitales 24h</Text>
+              <Text style={styles.emergencyDesc}>Localiza el centro médico más cercano con mejores opiniones por GPS.</Text>
+            </View>
+            <Text style={styles.emergencyArrow}>➔</Text>
+          </View>
+        </TouchableOpacity>
+
         {/* Quick Actions Grid */}
         <View style={styles.gridContainer}>
           <TouchableOpacity style={styles.gridItemCard} onPress={() => router.push('/scan')}>
@@ -755,5 +772,41 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#0052cc',
   },
-
+  emergencyBanner: {
+    backgroundColor: '#ffebe9',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#ffd0cb',
+    padding: 14,
+    marginBottom: 20,
+  },
+  emergencyHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  emergencyIconBg: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#ffdbd8',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emergencyTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#ba1a1a',
+  },
+  emergencyDesc: {
+    fontSize: 12,
+    color: '#410002',
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  emergencyArrow: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#ba1a1a',
+    marginLeft: 8,
+  },
 });
