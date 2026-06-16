@@ -43,6 +43,38 @@ async def get_recipes():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/medications")
+async def get_medications():
+    try:
+        return repository.obtener_todos_los_medicamentos()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/medications")
+async def create_medication(request: dict):
+    try:
+        med_id = repository.guardar_o_actualizar_medicamento(request)
+        return {"id": med_id, "status": "created"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/api/medications/{id}")
+async def update_medication(id: int, request: dict):
+    try:
+        request["id"] = id
+        med_id = repository.guardar_o_actualizar_medicamento(request)
+        return {"id": med_id, "status": "updated"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/medications/{id}")
+async def delete_medication(id: int):
+    try:
+        repository.eliminar_medicamento(id)
+        return {"status": "deleted"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/chat")
 async def chat(request: dict):
     message = request.get("message")

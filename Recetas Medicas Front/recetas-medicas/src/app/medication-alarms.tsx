@@ -1,17 +1,18 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Switch, StatusBar, useWindowDimensions, Platform } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Switch, StatusBar, useWindowDimensions, Platform, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, Clock, Pill, Droplet, Heart, Syringe, Thermometer, FlaskConical, Check } from 'lucide-react-native';
+import { ArrowLeft, Clock, Pill, Droplet, Heart, Syringe, Thermometer, FlaskConical, Check, Edit3, Trash2, X } from 'lucide-react-native';
 
 export default function MedicationAlarmsScreen() {
   const router = useRouter();
-  const { medId, medName, medDose, medFrequency, medIcon, medIconBg, medAlarms } = useLocalSearchParams();
+  const { medId, medName, medDose, medFrequency, medIcon, medIconBg, medAlarms, medHistory } = useLocalSearchParams();
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
-  // Parse alarms list
+  // Parse alarms list & history list
   const [alarmsList, setAlarmsList] = useState<any[]>([]);
+  const [historyList, setHistoryList] = useState<any[]>([]);
 
   useEffect(() => {
     if (medAlarms) {
@@ -22,6 +23,16 @@ export default function MedicationAlarmsScreen() {
       }
     }
   }, [medAlarms]);
+
+  useEffect(() => {
+    if (medHistory) {
+      try {
+        setHistoryList(JSON.parse(medHistory as string));
+      } catch (e) {
+        console.error("Error al parsear el historial:", e);
+      }
+    }
+  }, [medHistory]);
 
   const toggleAlarmActive = (alarmId: number) => {
     setAlarmsList(prev => prev.map(alarm => 
@@ -34,9 +45,41 @@ export default function MedicationAlarmsScreen() {
       pathname: '/alarms' as any,
       params: {
         updatedAlarms: JSON.stringify(alarmsList),
-        updatedMedId: medId
+        updatedMedId: medId,
+        updatedHistory: JSON.stringify(historyList)
       }
     });
+  };
+
+  const handleEdit = () => {
+    router.replace({
+      pathname: '/alarms' as any,
+      params: {
+        editMedId: medId
+      }
+    });
+  };
+
+  const handleDelete = () => {
+    Alert.alert(
+      "Eliminar Medicamento",
+      `¿Estás seguro de que deseas eliminar ${medName}? Se borrarán todas las alarmas asociadas.`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        { 
+          text: "Eliminar", 
+          style: "destructive", 
+          onPress: () => {
+            router.replace({
+              pathname: '/alarms' as any,
+              params: {
+                deletedMedId: medId
+              }
+            });
+          }
+        }
+      ]
+    );
   };
 
   const renderAlarmIcon = (iconName: string, color = "#003d9b") => {
@@ -69,7 +112,14 @@ export default function MedicationAlarmsScreen() {
           <Text style={styles.backBtnText}>Volver</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Horarios de Toma</Text>
-        <View style={{ width: 80 }} /> {/* balance layout */}
+        <View style={styles.headerRightActions}>
+          <TouchableOpacity onPress={handleEdit} style={styles.headerActionBtn} activeOpacity={0.7}>
+            <Edit3 color="#007aff" size={22} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleDelete} style={[styles.headerActionBtn, { marginLeft: 14 }]} activeOpacity={0.7}>
+            <Trash2 color="#ff3b30" size={22} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -123,6 +173,7 @@ export default function MedicationAlarmsScreen() {
                             style={{ marginLeft: 8 }} 
                             onPress={() => {
                               setAlarmsList(prev => prev.map(a => a.id === alarm.id ? { ...a, status: 'pending' } : a));
+                              setHistoryList(prev => prev.filter(h => !(h.date === 'Hoy' && h.time === alarm.time)));
                             }}
                             activeOpacity={0.7}
                           >
@@ -138,6 +189,7 @@ export default function MedicationAlarmsScreen() {
                             style={{ marginLeft: 8 }} 
                             onPress={() => {
                               setAlarmsList(prev => prev.map(a => a.id === alarm.id ? { ...a, status: 'pending' } : a));
+                              setHistoryList(prev => prev.filter(h => !(h.date === 'Hoy' && h.time === alarm.time)));
                             }}
                             activeOpacity={0.7}
                           >
@@ -168,7 +220,17 @@ export default function MedicationAlarmsScreen() {
                         style={styles.takeBtn}
                         activeOpacity={0.8}
                         onPress={() => {
+                          const now = new Date();
+                          const timeStr = now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: true });
+                          const newHistoryItem = {
+                            id: Date.now(),
+                            date: "Hoy",
+                            time: alarm.time,
+                            status: "taken",
+                            takenAt: timeStr
+                          };
                           setAlarmsList(prev => prev.map(a => a.id === alarm.id ? { ...a, status: 'taken' } : a));
+                          setHistoryList(prev => [newHistoryItem, ...prev]);
                         }}
                       >
                         <Check size={13} color="#ffffff" style={{ marginRight: 4 }} />
@@ -193,6 +255,60 @@ export default function MedicationAlarmsScreen() {
         ) : (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyText}>No hay recordatorios configurados para este medicamento.</Text>
+          </View>
+        )}
+
+        {/* Historial de Tomas Section */}
+        <Text style={[styles.sectionTitle, { marginTop: 28 }]}>Historial de tomas</Text>
+
+        {historyList.length > 0 ? (
+          <View style={styles.historyCardContainer}>
+            {historyList.map((item, idx) => {
+              const isTaken = item.status === 'taken';
+              return (
+                <View key={item.id || idx} style={styles.historyItem}>
+                  {/* Left Column: Line & Bullet */}
+                  <View style={styles.timelineCol}>
+                    <View style={[
+                      styles.bulletCircle,
+                      isTaken ? { backgroundColor: '#34c759' } : { backgroundColor: '#ff3b30' }
+                    ]}>
+                      {isTaken ? (
+                        <Check size={12} color="#ffffff" strokeWidth={3} />
+                      ) : (
+                        <X size={12} color="#ffffff" strokeWidth={3} />
+                      )}
+                    </View>
+                    {idx < historyList.length - 1 && <View style={styles.timelineLine} />}
+                  </View>
+
+                  {/* Right Column: Info */}
+                  <View style={styles.historyContent}>
+                    <View style={styles.historyHeaderRow}>
+                      <Text style={styles.historyTime}>{item.date} • {item.time}</Text>
+                      <View style={[
+                        styles.statusBadge,
+                        isTaken ? { backgroundColor: '#e8f5e9' } : { backgroundColor: '#ffebee' }
+                      ]}>
+                        <Text style={[
+                          styles.statusBadgeText,
+                          isTaken ? { color: '#34c759' } : { color: '#ff3b30' }
+                        ]}>
+                          {isTaken ? 'A tiempo' : 'Omitida'}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={styles.historyDesc}>
+                      {isTaken ? `Tomada a las ${item.takenAt}` : 'Tratamiento omitido o no registrado'}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        ) : (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyText}>No hay tomas registradas en el historial aún.</Text>
           </View>
         )}
 
@@ -385,5 +501,75 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#ffffff',
+  },
+  headerRightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    width: 80,
+  },
+  headerActionBtn: {
+    padding: 4,
+  },
+  historyCardContainer: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#edeef0',
+    paddingVertical: 18,
+    paddingHorizontal: 16,
+    marginBottom: 32,
+  },
+  historyItem: {
+    flexDirection: 'row',
+    minHeight: 68,
+  },
+  timelineCol: {
+    alignItems: 'center',
+    marginRight: 14,
+    width: 24,
+  },
+  bulletCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 2,
+  },
+  timelineLine: {
+    width: 2,
+    flex: 1,
+    backgroundColor: '#edeef0',
+    marginVertical: 4,
+  },
+  historyContent: {
+    flex: 1,
+    paddingBottom: 16,
+  },
+  historyHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  historyTime: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#191c1e',
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  statusBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  historyDesc: {
+    fontSize: 12,
+    color: '#737685',
+    marginTop: 4,
+    fontWeight: '500',
   },
 });

@@ -1,8 +1,23 @@
 import sqlite3
+import json
 from typing import Optional
 import config
 from core.entities import Recipe, Patient, Clinic, Doctor, Diagnosis, Medication
 from core.interfaces import IRecipeRepository
+
+def parse_frecuencia_alarms(frecuencia: str) -> list:
+    f = (frecuencia or "").lower()
+    times = ["08:00 AM"]
+    if "12" in f or "doce" in f:
+        times = ["08:00 AM", "08:00 PM"]
+    elif "8" in f or "ocho" in f:
+        times = ["08:00 AM", "04:00 PM", "12:00 AM"]
+    elif "6" in f or "seis" in f:
+        times = ["06:00 AM", "12:00 PM", "06:00 PM", "12:00 AM"]
+    elif "4" in f or "cuatro" in f:
+        times = ["08:00 AM", "12:00 PM", "04:00 PM", "08:00 PM", "12:00 AM", "04:00 AM"]
+    return [{"id": i + 1, "time": t, "active": True, "status": "pending"} for i, t in enumerate(times)]
+
 
 class SQLiteRecipeRepository(IRecipeRepository):
     def __init__(self, db_path: str = config.DB_PATH):
@@ -67,6 +82,11 @@ class SQLiteRecipeRepository(IRecipeRepository):
             indicaciones_fda TEXT,
             advertencias_fda TEXT,
             dosage_fda TEXT,
+            icon TEXT,
+            iconBg TEXT,
+            active BOOLEAN DEFAULT 1,
+            alarms_json TEXT,
+            history_json TEXT,
             FOREIGN KEY (receta_id) REFERENCES recetas(id) ON DELETE CASCADE
         )
         """)
@@ -78,7 +98,12 @@ class SQLiteRecipeRepository(IRecipeRepository):
             ("manufacturer_name", "TEXT"),
             ("indicaciones_fda", "TEXT"),
             ("advertencias_fda", "TEXT"),
-            ("dosage_fda", "TEXT")
+            ("dosage_fda", "TEXT"),
+            ("icon", "TEXT"),
+            ("iconBg", "TEXT"),
+            ("active", "BOOLEAN DEFAULT 1"),
+            ("alarms_json", "TEXT"),
+            ("history_json", "TEXT")
         ]
         for col, col_type in meds_columns_to_check:
             try:
@@ -155,12 +180,14 @@ class SQLiteRecipeRepository(IRecipeRepository):
             
             # Guardar medicamentos correspondientes
             for med in recipe.medicamentos:
+                alarms = parse_frecuencia_alarms(med.frecuencia)
                 cursor.execute("""
                 INSERT INTO medicamentos (
                     receta_id, nombre, dosis, frecuencia, duracion,
                     brand_name, generic_name, manufacturer_name,
-                    indicaciones_fda, advertencias_fda, dosage_fda
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    indicaciones_fda, advertencias_fda, dosage_fda,
+                    icon, iconBg, active, alarms_json, history_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     recipe_id,
                     med.nombre,
@@ -172,7 +199,12 @@ class SQLiteRecipeRepository(IRecipeRepository):
                     med.manufacturer_name,
                     med.indicaciones_fda,
                     med.advertencias_fda,
-                    med.dosage_fda
+                    med.dosage_fda,
+                    "pill",
+                    "#c4d2ff30",
+                    1,
+                    json.dumps(alarms),
+                    "[]"
                 ))
 
                 
@@ -293,12 +325,32 @@ class SQLiteRecipeRepository(IRecipeRepository):
         cursor = conn.cursor()
         try:
             cursor.execute("""
-            SELECT id, receta_id, nombre, dosis, frecuencia, duracion
+            SELECT id, receta_id, nombre, dosis, frecuencia, duracion,
+                   icon, iconBg, active, alarms_json, history_json
             FROM medicamentos
             WHERE receta_id = ?
             """, (receta_id,))
             rows = cursor.fetchall()
-            return [dict(r) for r in rows]
+            meds = []
+            for r in rows:
+                d = dict(r)
+                try:
+                    d["alarms"] = json.loads(d["alarms_json"]) if d.get("alarms_json") else []
+                except Exception:
+                    d["alarms"] = []
+                try:
+                    d["history"] = json.loads(d["history_json"]) if d.get("history_json") else []
+                except Exception:
+                    d["history"] = []
+                d["active"] = bool(d.get("active"))
+                d["name"] = d.pop("nombre", "")
+                d["dose"] = d.pop("dosis", "")
+                d["frequency"] = d.pop("frecuencia", "")
+                d["duration"] = d.pop("duracion", "")
+                d.pop("alarms_json", None)
+                d.pop("history_json", None)
+                meds.append(d)
+            return meds
         except Exception as e:
             print(f"Error al obtener medicamentos para receta {receta_id}: {e}")
             return []
@@ -326,6 +378,100 @@ class SQLiteRecipeRepository(IRecipeRepository):
         except Exception as e:
             print(f"Error al obtener recetas: {e}")
             return []
+        finally:
+            conn.close()
+
+    def obtener_todos_los_medicamentos(self) -> list:
+        """Obtiene todos los medicamentos guardados, con o sin receta asociada."""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+            SELECT id, receta_id, nombre, dosis, frecuencia, duracion,
+                   icon, iconBg, active, alarms_json, history_json
+            FROM medicamentos
+            ORDER BY id DESC
+            """)
+            rows = cursor.fetchall()
+            meds = []
+            for r in rows:
+                d = dict(r)
+                try:
+                    d["alarms"] = json.loads(d["alarms_json"]) if d.get("alarms_json") else []
+                except Exception:
+                    d["alarms"] = []
+                try:
+                    d["history"] = json.loads(d["history_json"]) if d.get("history_json") else []
+                except Exception:
+                    d["history"] = []
+                d["active"] = bool(d.get("active"))
+                d["name"] = d.pop("nombre", "")
+                d["dose"] = d.pop("dosis", "")
+                d["frequency"] = d.pop("frecuencia", "")
+                d["duration"] = d.pop("duracion", "")
+                d.pop("alarms_json", None)
+                d.pop("history_json", None)
+                meds.append(d)
+            return meds
+        except Exception as e:
+            print(f"Error al obtener todos los medicamentos: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def guardar_o_actualizar_medicamento(self, med: dict) -> int:
+        """Guarda un nuevo medicamento o actualiza uno existente."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        med_id = med.get("id")
+        receta_id = med.get("receta_id")
+        nombre = med.get("name", med.get("nombre", ""))
+        dosis = med.get("dose", med.get("dosis", ""))
+        frecuencia = med.get("frequency", med.get("frecuencia", ""))
+        duracion = med.get("duration", med.get("duracion", ""))
+        icon = med.get("icon", "pill")
+        iconBg = med.get("iconBg", "#c4d2ff30")
+        active = 1 if med.get("active", True) else 0
+        alarms_json = json.dumps(med.get("alarms", []))
+        history_json = json.dumps(med.get("history", []))
+        
+        try:
+            if med_id:
+                cursor.execute("""
+                UPDATE medicamentos
+                SET receta_id = ?, nombre = ?, dosis = ?, frecuencia = ?, duracion = ?,
+                    icon = ?, iconBg = ?, active = ?, alarms_json = ?, history_json = ?
+                WHERE id = ?
+                """, (receta_id, nombre, dosis, frecuencia, duracion, icon, iconBg, active, alarms_json, history_json, med_id))
+                conn.commit()
+                return med_id
+            else:
+                cursor.execute("""
+                INSERT INTO medicamentos (
+                    receta_id, nombre, dosis, frecuencia, duracion,
+                    icon, iconBg, active, alarms_json, history_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (receta_id, nombre, dosis, frecuencia, duracion, icon, iconBg, active, alarms_json, history_json))
+                conn.commit()
+                return cursor.lastrowid
+        except Exception as e:
+            conn.rollback()
+            raise e
+        finally:
+            conn.close()
+
+    def eliminar_medicamento(self, med_id: int) -> None:
+        """Elimina un medicamento de la base de datos."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM medicamentos WHERE id = ?", (med_id,))
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            raise e
         finally:
             conn.close()
 

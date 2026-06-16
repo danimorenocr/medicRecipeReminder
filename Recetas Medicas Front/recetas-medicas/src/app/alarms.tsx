@@ -3,9 +3,15 @@ import { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Switch, StatusBar, Modal, TextInput, useWindowDimensions, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Bell, Wifi, ArrowRight, Plus, X, Check, Calendar, Clock, Minus, Pill, Droplet, Activity, Coffee, Heart, Syringe, Thermometer, FlaskConical } from 'lucide-react-native';
+import { Bell, Wifi, ArrowRight, Plus, X, Check, Calendar, Clock, Minus, Pill, Droplet, Activity, Coffee, Heart, Syringe, Thermometer, FlaskConical, Trash2 } from 'lucide-react-native';
+import Swipeable from 'react-native-gesture-handler/Swipeable';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import AlarmTriggerOverlay from '../components/alarm-trigger-overlay';
 import * as Notifications from 'expo-notifications';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import * as ImagePicker from 'expo-image-picker';
+import { API_URL } from '../constants/api';
+import { Alert, ActivityIndicator } from 'react-native';
 
 // Dynamically require Notifee to prevent crashing in Expo Go
 let notifee: any = null;
@@ -32,7 +38,7 @@ Notifications.setNotificationHandler({
 
 export default function AlarmsScreen() {
   const router = useRouter();
-  const { meds, updatedAlarms, updatedMedId } = useLocalSearchParams();
+  const { meds, updatedAlarms, updatedMedId, updatedHistory, editMedId, deletedMedId } = useLocalSearchParams();
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
   // Dynamic responsive styles
@@ -61,68 +67,135 @@ export default function AlarmsScreen() {
   const dynamicSectionLabelStyle = {
     marginTop: screenHeight < 680 ? 12 : 20,
   };
-  const [medications, setMedications] = useState([
-    {
-      id: 1,
-      name: "Amoxicilina 500mg",
-      dose: "1 cápsula",
-      frequency: "Cada 12 horas",
-      duration: "7 días",
-      icon: "pill",
-      iconBg: '#c4d2ff30',
-      active: true,
-      alarms: [
-        { id: 101, time: "08:00 AM", active: true, status: 'pending' },
-        { id: 102, time: "08:00 PM", active: true, status: 'pending' }
-      ]
-    },
-    {
-      id: 2,
-      name: "Ibuprofeno 400mg",
-      dose: "1 tableta",
-      frequency: "Cada 8 horas",
-      duration: "3 días",
-      icon: "pill",
-      iconBg: '#82f9be30',
-      active: true,
-      alarms: [
-        { id: 201, time: "06:00 AM", active: true, status: 'pending' },
-        { id: 202, time: "02:00 PM", active: true, status: 'pending' },
-        { id: 203, time: "10:00 PM", active: true, status: 'pending' }
-      ]
-    },
-    {
-      id: 3,
-      name: "Vitamina D",
-      dose: "1 gota",
-      frequency: "Una vez al día",
-      duration: "30 días",
-      icon: "droplet",
-      iconBg: '#edeef0',
-      active: false,
-      alarms: [
-        { id: 301, time: "08:00 PM", active: false, status: 'pending' }
-      ]
+  const [medications, setMedications] = useState<any[]>([]);
+
+  const fetchMedications = async () => {
+    try {
+      console.log("[fetchMedications] Fetching from:", `${API_URL}/api/medications`);
+      const response = await fetch(`${API_URL}/api/medications`);
+      if (response.ok) {
+        const data = await response.json();
+        setMedications(data);
+      } else {
+        console.error("Error al cargar medicamentos de la BD, status:", response.status);
+      }
+    } catch (e) {
+      console.error("Error al hacer fetch de medicamentos:", e);
     }
-  ]);
+  };
+
+  const updateMedicationInDB = async (updatedMed: any) => {
+    try {
+      console.log("[updateMedicationInDB] PUT request to:", `${API_URL}/api/medications/${updatedMed.id}`);
+      const response = await fetch(`${API_URL}/api/medications/${updatedMed.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updatedMed),
+      });
+      if (!response.ok) {
+        console.error("Error al actualizar medicamento en la BD, status:", response.status);
+      }
+    } catch (e) {
+      console.error("Error en updateMedicationInDB:", e);
+    }
+  };
+
+  const medicationsRef = React.useRef(medications);
+  useEffect(() => {
+    medicationsRef.current = medications;
+  }, [medications]);
+
+  useEffect(() => {
+    fetchMedications();
+  }, []);
 
   useEffect(() => {
     if (updatedAlarms && updatedMedId) {
       try {
         const alarmsList = JSON.parse(updatedAlarms as string);
         const medId = parseInt(updatedMedId as string, 10);
-        setMedications(prev => prev.map(m => {
-          if (m.id === medId) {
+        const historyList = updatedHistory ? JSON.parse(updatedHistory as string) : null;
+        
+        const updateAlarmsAndSave = async () => {
+          const med = medicationsRef.current.find(m => m.id === medId);
+          if (med) {
             const anyActive = alarmsList.some((a: any) => a.active);
-            return { ...m, active: anyActive, alarms: alarmsList };
+            const updatedMed = { 
+              ...med, 
+              active: anyActive, 
+              alarms: alarmsList,
+              ...(historyList ? { history: historyList } : {})
+            };
+            setMedications(prev => prev.map(m => m.id === medId ? updatedMed : m));
+            await updateMedicationInDB(updatedMed);
           }
-          return m;
-        }));
+        };
+        updateAlarmsAndSave();
+        router.setParams({ updatedAlarms: undefined, updatedMedId: undefined, updatedHistory: undefined });
       } catch (e) {
         console.error("Error al actualizar alarmas desde la vista de detalle:", e);
       }
     }
-  }, [updatedAlarms, updatedMedId]);
+  }, [updatedAlarms, updatedMedId, updatedHistory]);
+
+  useEffect(() => {
+    if (deletedMedId) {
+      const medId = parseInt(deletedMedId as string, 10);
+      const deleteFromDB = async () => {
+        try {
+          const response = await fetch(`${API_URL}/api/medications/${medId}`, {
+            method: 'DELETE'
+          });
+          if (response.ok) {
+            setMedications(prev => prev.filter(m => m.id !== medId));
+            router.setParams({ deletedMedId: undefined });
+          } else {
+            console.error("Error al eliminar de la BD");
+          }
+        } catch (e) {
+          console.error("Error en deleteFromDB:", e);
+        }
+      };
+      deleteFromDB();
+    }
+  }, [deletedMedId]);
+
+  useEffect(() => {
+    if (editMedId) {
+      const medId = parseInt(editMedId as string, 10);
+      const medToEdit = medications.find(m => m.id === medId);
+      if (medToEdit) {
+        setEditingMedId(medId);
+        setFormMedName(medToEdit.name);
+        setFormDose(medToEdit.dose);
+        setFormFrequency(medToEdit.frequency);
+        
+        const parsedDur = parseImportedDuration(medToEdit.duration);
+        setDurationValue(parsedDur.val);
+        setDurationUnit(parsedDur.unit);
+        
+        setFormIcon(medToEdit.icon);
+        setFormIconBg(medToEdit.iconBg);
+        
+        const times = medToEdit.alarms.map((a: any) => a.time);
+        setScheduledTimes(times);
+        
+        if (times.length > 0) {
+          const [timeStr, ampm] = times[0].split(' ');
+          const [h, m] = timeStr.split(':');
+          setTimeHour(h);
+          setTimeMinute(m);
+          setTimeAmPm(ampm);
+        }
+        
+        setModalVisible(true);
+        setCurrentStep(1);
+      }
+      router.setParams({ editMedId: undefined });
+    }
+  }, [editMedId]);
 
   // Active Simulated/Real alarm state
   const [activeAlarm, setActiveAlarm] = useState<{
@@ -150,6 +223,9 @@ export default function AlarmsScreen() {
                 channelId,
                 sound: 'default',
                 importance: AndroidImportance.HIGH,
+                fullScreenAction: {
+                  id: 'default',
+                },
                 pressAction: {
                   id: 'default',
                 },
@@ -180,6 +256,94 @@ export default function AlarmsScreen() {
     }
   };
 
+  // Schedule native OS alarms whenever the medications state changes
+  useEffect(() => {
+    async function scheduleNotifications() {
+      if (Platform.OS === 'web') return;
+
+      try {
+        // Cancel all existing scheduled notifications first to avoid multiples
+        await Notifications.cancelAllScheduledNotificationsAsync();
+
+        // Request permission if not already granted
+        const { status } = await Notifications.getPermissionsAsync();
+        if (status !== 'granted') {
+          await Notifications.requestPermissionsAsync();
+        }
+
+        for (const med of medications) {
+          if (med.active) {
+            for (const alarm of med.alarms) {
+              if (alarm.active && alarm.status === 'pending') {
+                // Parse "08:00 AM" -> hour, minute
+                const [timeStr, ampm] = alarm.time.split(' ');
+                let [hoursStr, minutesStr] = timeStr.split(':');
+                let hours = parseInt(hoursStr, 10);
+                const minutes = parseInt(minutesStr, 10);
+                if (ampm === 'PM' && hours < 12) hours += 12;
+                if (ampm === 'AM' && hours === 12) hours = 0;
+
+                // Schedule a daily repeating alarm notification
+                await Notifications.scheduleNotificationAsync({
+                  content: {
+                    title: `💊 ¡Hora de tomar ${med.name}!`,
+                    body: `Dosis: ${med.dose} - ${med.frequency}`,
+                    sound: true, // Will play sound when phone is locked / backgrounded
+                    vibrate: [0, 500, 1000, 500],
+                    data: { medId: med.id, alarmId: alarm.id },
+                  },
+                  trigger: {
+                    type: Notifications.SchedulableTriggerInputTypes.CALENDAR,
+                    hour: hours,
+                    minute: minutes,
+                    repeats: true,
+                  },
+                });
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Error scheduling background notifications:", err);
+      }
+    }
+
+    scheduleNotifications();
+  }, [medications]);
+
+  useEffect(() => {
+    // 1. Listener for when a user clicks/taps the notification (from lock screen or background)
+    const responseSub = Notifications.addNotificationResponseReceivedListener(response => {
+      const data = response.notification.request.content.data;
+      if (data && data.medId && data.alarmId) {
+        const currentMeds = medicationsRef.current;
+        const med = currentMeds.find(m => m.id === data.medId);
+        const alarm = med?.alarms.find((a: any) => a.id === data.alarmId);
+        if (med && alarm) {
+          setActiveAlarm({ medication: med, alarm });
+        }
+      }
+    });
+
+    // 2. Listener for when a notification is received while in foreground (shows alarm overlay immediately)
+    const receivedSub = Notifications.addNotificationReceivedListener(notification => {
+      const data = notification.request.content.data;
+      if (data && data.medId && data.alarmId) {
+        const currentMeds = medicationsRef.current;
+        const med = currentMeds.find(m => m.id === data.medId);
+        const alarm = med?.alarms.find((a: any) => a.id === data.alarmId);
+        if (med && alarm) {
+          setActiveAlarm({ medication: med, alarm });
+        }
+      }
+    });
+
+    return () => {
+      responseSub.remove();
+      receivedSub.remove();
+    };
+  }, []);
+
   useEffect(() => {
     const checkAlarms = () => {
       const now = new Date();
@@ -209,57 +373,71 @@ export default function AlarmsScreen() {
     return () => clearInterval(interval);
   }, [medications]);
 
-  const handleAlarmTake = (medId: number, alarmId: number) => {
-    setMedications(prev => prev.map(m => {
-      if (m.id === medId) {
-        const updatedAlarms = m.alarms.map(a => a.id === alarmId ? { ...a, status: 'taken' } : a);
-        return { ...m, alarms: updatedAlarms };
-      }
-      return m;
-    }));
+  const handleAlarmTake = async (medId: number, alarmId: number) => {
+    const med = medications.find(m => m.id === medId);
+    if (!med) return;
+    
+    const updatedAlarms = med.alarms.map((a: any) => a.id === alarmId ? { ...a, status: 'taken' } : a);
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: true });
+    const historyItem = {
+      id: Date.now(),
+      date: "Hoy",
+      time: med.alarms.find((a: any) => a.id === alarmId)?.time || timeStr,
+      status: "taken",
+      takenAt: timeStr
+    };
+    const updatedHistory = [historyItem, ...(med.history || [])];
+    const updatedMed = { ...med, alarms: updatedAlarms, history: updatedHistory };
+    
+    setMedications(prev => prev.map(m => m.id === medId ? updatedMed : m));
     setActiveAlarm(null);
+    await updateMedicationInDB(updatedMed);
   };
 
-  const handleAlarmSnooze = (medId: number, alarmId: number) => {
-    setMedications(prev => prev.map(m => {
-      if (m.id === medId) {
-        const updatedAlarms = m.alarms.map(a => {
-          if (a.id === alarmId) {
-            const [timeStr, ampmStr] = a.time.split(' ');
-            const [hStr, mStr] = timeStr.split(':');
-            let h = parseInt(hStr, 10);
-            let min = parseInt(mStr, 10);
-            if (ampmStr === 'PM' && h < 12) h += 12;
-            if (ampmStr === 'AM' && h === 12) h = 0;
+  const handleAlarmSnooze = async (medId: number, alarmId: number) => {
+    const med = medications.find(m => m.id === medId);
+    if (!med) return;
 
-            const date = new Date();
-            date.setHours(h);
-            date.setMinutes(min + 10);
+    const updatedAlarms = med.alarms.map((a: any) => {
+      if (a.id === alarmId) {
+        const [timeStr, ampmStr] = a.time.split(' ');
+        const [hStr, mStr] = timeStr.split(':');
+        let h = parseInt(hStr, 10);
+        let min = parseInt(mStr, 10);
+        if (ampmStr === 'PM' && h < 12) h += 12;
+        if (ampmStr === 'AM' && h === 12) h = 0;
 
-            let newHours = date.getHours();
-            const newMinutes = date.getMinutes().toString().padStart(2, '0');
-            const newAmpm = newHours >= 12 ? 'PM' : 'AM';
-            newHours = newHours % 12;
-            newHours = newHours ? newHours : 12;
-            const newFormattedHour = newHours.toString().padStart(2, '0');
-            const newTime = `${newFormattedHour}:${newMinutes} ${newAmpm}`;
+        const date = new Date();
+        date.setHours(h);
+        date.setMinutes(min + 10);
 
-            return { ...a, time: newTime, status: 'snoozed' };
-          }
-          return a;
-        });
-        return { ...m, alarms: updatedAlarms };
+        let newHours = date.getHours();
+        const newMinutes = date.getMinutes().toString().padStart(2, '0');
+        const newAmpm = newHours >= 12 ? 'PM' : 'AM';
+        newHours = newHours % 12;
+        newHours = newHours ? newHours : 12;
+        const newFormattedHour = newHours.toString().padStart(2, '0');
+        const newTime = `${newFormattedHour}:${newMinutes} ${newAmpm}`;
+
+        return { ...a, time: newTime, status: 'snoozed' };
       }
-      return m;
-    }));
+      return a;
+    });
+
+    const updatedMed = { ...med, alarms: updatedAlarms };
+    setMedications(prev => prev.map(m => m.id === medId ? updatedMed : m));
     setActiveAlarm(null);
+    await updateMedicationInDB(updatedMed);
   };
 
   // Modal & Form States
   const [modalVisible, setModalVisible] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
+  const [isProcessingOCR, setIsProcessingOCR] = useState(false);
   const [queue, setQueue] = useState<any[]>([]);
   const [currentQueueIndex, setCurrentQueueIndex] = useState(0);
+  const [editingMedId, setEditingMedId] = useState<number | null>(null);
 
   const [formMedName, setFormMedName] = useState('');
   const [formDose, setFormDose] = useState('');
@@ -278,10 +456,31 @@ export default function AlarmsScreen() {
   const [timeMinute, setTimeMinute] = useState('00');
   const [timeAmPm, setTimeAmPm] = useState('AM');
 
-  // Calculated Schedules and Picker State
   const [scheduledTimes, setScheduledTimes] = useState<string[]>(["08:00 AM"]);
   const [showFreqDropdown, setShowFreqDropdown] = useState(false);
   const [editingTimeIndex, setEditingTimeIndex] = useState<number | null>(null);
+  
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [pickerDate, setPickerDate] = useState(new Date());
+  const [pickerIndex, setPickerIndex] = useState<number | null>(null);
+
+  const handleTimePickerChange = (event: any, selectedDate?: Date) => {
+    if (Platform.OS === 'android') {
+      setShowTimePicker(false);
+    }
+    if (selectedDate && pickerIndex !== null) {
+      setPickerDate(selectedDate);
+      let hours = selectedDate.getHours();
+      const minutes = selectedDate.getMinutes().toString().padStart(2, '0');
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12;
+      hours = hours ? hours : 12;
+      const formattedHour = hours.toString().padStart(2, '0');
+
+      const updatedTimes = calculateTimesFromFrequency(formattedHour, minutes, ampm, formFrequency);
+      setScheduledTimes(updatedTimes);
+    }
+  };
   
   // Temporal inputs for editing scheduled times
   const [tempHour, setTempHour] = useState('08');
@@ -317,11 +516,11 @@ export default function AlarmsScreen() {
 
     let interval = 24;
     const cleanFreq = freqStr.toLowerCase();
-    if (cleanFreq.includes('8') || cleanFreq.includes('ocho')) interval = 8;
+    if (cleanFreq.includes('24') || cleanFreq.includes('veinticuatro') || cleanFreq.includes('día') || cleanFreq.includes('dia')) interval = 24;
     else if (cleanFreq.includes('12') || cleanFreq.includes('doce')) interval = 12;
+    else if (cleanFreq.includes('8') || cleanFreq.includes('ocho')) interval = 8;
     else if (cleanFreq.includes('6') || cleanFreq.includes('seis')) interval = 6;
     else if (cleanFreq.includes('4') || cleanFreq.includes('cuatro')) interval = 4;
-    else if (cleanFreq.includes('24') || cleanFreq.includes('veinticuatro') || cleanFreq.includes('día') || cleanFreq.includes('dia')) interval = 24;
 
     const timesCount = Math.floor(24 / interval);
     const result = [];
@@ -373,20 +572,122 @@ export default function AlarmsScreen() {
     setDurationValue(parsedDur.val);
     setDurationUnit(parsedDur.unit);
 
-    setSelectedDate(new Date());
-    setFormTime('08:00 AM');
-    setTimeHour('08');
-    setTimeMinute('00');
-    setTimeAmPm('AM');
+    const now = new Date();
+    let hours = now.getHours();
+    const minutes = now.getMinutes().toString().padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+    const formattedHour = hours.toString().padStart(2, '0');
+
+    setSelectedDate(now);
+    setFormTime(`${formattedHour}:${minutes} ${ampm}`);
+    setTimeHour(formattedHour);
+    setTimeMinute(minutes);
+    setTimeAmPm(ampm);
     setFormIcon('pill');
     setFormIconBg('#c4d2ff30');
 
     // Calculate times from imported recipe frequencies
-    const initialTimes = calculateTimesFromFrequency('08', '00', 'AM', freq);
+    const initialTimes = calculateTimesFromFrequency(formattedHour, minutes, ampm, freq);
     setScheduledTimes(initialTimes);
   };
 
+  const handleNewAlarmPress = () => {
+    if (Platform.OS === 'web') {
+      handleOpenManual();
+      return;
+    }
+
+    Alert.alert(
+      "Nueva Alarma",
+      "¿Cómo deseas agregar el medicamento?",
+      [
+        { text: "Tomar foto de receta", onPress: () => handleTakeRecipePhoto() },
+        { text: "Ingreso manual", onPress: () => handleOpenManual() },
+        { text: "Cancelar", style: "cancel" }
+      ]
+    );
+  };
+
+  const handleTakeRecipePhoto = async () => {
+    try {
+      const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+      if (permissionResult.granted === false) {
+        Alert.alert("Permiso Requerido", "Se requiere permiso de cámara para digitalizar la receta.");
+        return;
+      }
+
+      const pickerResult = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        quality: 0.8,
+      });
+
+      if (pickerResult.canceled) {
+        return;
+      }
+
+      const uri = pickerResult.assets[0].uri;
+      await uploadAndProcessRecipeImage(uri);
+    } catch (err: any) {
+      console.error(err);
+      Alert.alert("Error de Cámara", "No se pudo activar la cámara.");
+    }
+  };
+
+  const uploadAndProcessRecipeImage = async (uri: string) => {
+    setIsProcessingOCR(true);
+    try {
+      const formData = new FormData();
+      const filename = uri.split('/').pop() || 'receta.jpg';
+      const match = /\.(\w+)$/.exec(filename);
+      const type = match ? `image/${match[1]}` : `image/jpeg`;
+      
+      // @ts-ignore
+      formData.append('file', {
+        uri: Platform.OS === 'ios' ? uri.replace('file://', '') : uri,
+        name: filename,
+        type,
+      });
+
+      const response = await fetch(`${API_URL}/api/recipes/process`, {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || "Error en el servidor");
+      }
+
+      const data = await response.json();
+      const extractedMeds = data?.recipe_dict?.medicamentos;
+      
+      if (extractedMeds && extractedMeds.length > 0) {
+        setQueue(extractedMeds);
+        setCurrentQueueIndex(0);
+        loadMedIntoForm(extractedMeds[0]);
+        setModalVisible(true);
+        setCurrentStep(1);
+        Alert.alert("Receta Procesada", `Se detectaron ${extractedMeds.length} medicamento(s). Revisa y acepta la configuración de cada uno.`);
+      } else {
+        Alert.alert("OCR Sin Resultados", "No pudimos detectar medicamentos en esta foto. Por favor ingresa manualmente.");
+      }
+    } catch (err: any) {
+      console.error('Error al procesar OCR:', err);
+      Alert.alert("Error de Procesamiento", "No se pudo extraer la información con Gemini. Intenta de nuevo o ingresa manualmente.");
+    } finally {
+      setIsProcessingOCR(false);
+    }
+  };
+
   const handleOpenManual = () => {
+    setEditingMedId(null);
     setQueue([]);
     setCurrentQueueIndex(0);
     setFormMedName('');
@@ -394,64 +695,151 @@ export default function AlarmsScreen() {
     setFormFrequency('Cada 12 horas');
     setDurationValue('7');
     setDurationUnit('días');
-    setSelectedDate(new Date());
-    setFormTime('08:00 AM');
-    setTimeHour('08');
-    setTimeMinute('00');
-    setTimeAmPm('AM');
+    const now = new Date();
+    let hours = now.getHours();
+    const minutes = now.getMinutes().toString().padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+    const formattedHour = hours.toString().padStart(2, '0');
+
+    setSelectedDate(now);
+    setFormTime(`${formattedHour}:${minutes} ${ampm}`);
+    setTimeHour(formattedHour);
+    setTimeMinute(minutes);
+    setTimeAmPm(ampm);
     setFormIcon('pill');
     setFormIconBg('#c4d2ff30');
-    setScheduledTimes(["08:00 AM", "08:00 PM"]);
+    
+    const initialTimes = calculateTimesFromFrequency(formattedHour, minutes, ampm, 'Cada 12 horas');
+    setScheduledTimes(initialTimes);
     setModalVisible(true);
     setCurrentStep(1);
   };
 
-  const handleSaveAlarm = () => {
-    // Generate alarms for all scheduled times
-    const newAlarms = scheduledTimes.map((t, idx) => ({
-      id: Date.now() + idx,
-      time: t,
-      active: true,
-      status: 'pending'
-    }));
+  const handleSaveAlarm = async () => {
+    if (editingMedId !== null) {
+      const med = medications.find(m => m.id === editingMedId);
+      if (!med) return;
+      
+      const updatedAlarms = scheduledTimes.map((t, idx) => {
+        const existing = med.alarms.find((a: any) => a.time === t);
+        if (existing) {
+          return existing;
+        }
+        return {
+          id: Date.now() + idx,
+          time: t,
+          active: true,
+          status: 'pending'
+        };
+      });
 
-    const newMed = {
-      id: Date.now(),
-      name: formMedName,
-      dose: formDose,
-      frequency: formFrequency,
-      duration: `${durationValue} ${durationUnit}`,
-      icon: formIcon,
-      iconBg: formIconBg,
-      active: true,
-      alarms: newAlarms
-    };
+      const updatedMed = {
+        ...med,
+        name: formMedName,
+        dose: formDose,
+        frequency: formFrequency,
+        duration: `${durationValue} ${durationUnit}`,
+        icon: formIcon,
+        iconBg: formIconBg,
+        alarms: updatedAlarms
+      };
 
-    setMedications(prev => [newMed, ...prev]);
-
-    // Ver si hay más en la cola de importación
-    if (queue.length > 0 && currentQueueIndex + 1 < queue.length) {
-      const nextIndex = currentQueueIndex + 1;
-      setCurrentQueueIndex(nextIndex);
-      loadMedIntoForm(queue[nextIndex]);
-      setCurrentStep(1);
-    } else {
+      setMedications(prev => prev.map(m => m.id === editingMedId ? updatedMed : m));
+      setEditingMedId(null);
       setModalVisible(false);
-      setQueue([]);
-      setCurrentQueueIndex(0);
-      router.setParams({ meds: undefined });
+      await updateMedicationInDB(updatedMed);
+    } else {
+      const newAlarms = scheduledTimes.map((t, idx) => ({
+        id: Date.now() + idx,
+        time: t,
+        active: true,
+        status: 'pending'
+      }));
+
+      const newMed = {
+        name: formMedName,
+        dose: formDose,
+        frequency: formFrequency,
+        duration: `${durationValue} ${durationUnit}`,
+        icon: formIcon,
+        iconBg: formIconBg,
+        active: true,
+        alarms: newAlarms,
+        history: []
+      };
+
+      try {
+        const response = await fetch(`${API_URL}/api/medications`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(newMed),
+        });
+        if (response.ok) {
+          const resData = await response.json();
+          const medWithId = { ...newMed, id: resData.id };
+          setMedications(prev => [medWithId, ...prev]);
+        } else {
+          console.error("Error al registrar medicamento en BD");
+        }
+      } catch (e) {
+        console.error("Error al guardar medicamento:", e);
+      }
+
+      if (queue.length > 0 && currentQueueIndex + 1 < queue.length) {
+        const nextIndex = currentQueueIndex + 1;
+        setCurrentQueueIndex(nextIndex);
+        loadMedIntoForm(queue[nextIndex]);
+        setCurrentStep(1);
+      } else {
+        setModalVisible(false);
+        setQueue([]);
+        setCurrentQueueIndex(0);
+        router.setParams({ meds: undefined });
+      }
     }
   };
 
-  const toggleActive = (id: number) => {
-    setMedications(prevMeds => prevMeds.map(med => {
-      if (med.id === id) {
-        const newActive = !med.active;
-        const updatedAlarms = med.alarms.map(alarm => ({ ...alarm, active: newActive }));
-        return { ...med, active: newActive, alarms: updatedAlarms };
-      }
-      return med;
-    }));
+  const toggleActive = async (id: number) => {
+    const med = medications.find(m => m.id === id);
+    if (!med) return;
+    const newActive = !med.active;
+    const updatedAlarms = med.alarms.map((alarm: any) => ({ ...alarm, active: newActive }));
+    const updatedMed = { ...med, active: newActive, alarms: updatedAlarms };
+    
+    setMedications(prevMeds => prevMeds.map(m => m.id === id ? updatedMed : m));
+    await updateMedicationInDB(updatedMed);
+  };
+
+  const confirmDeleteMedication = (medId: number) => {
+    Alert.alert(
+      "Eliminar Medicamento",
+      "¿Estás seguro de que deseas eliminar este medicamento y todas sus alarmas?",
+      [
+        { text: "Cancelar", style: "cancel" },
+        { 
+          text: "Eliminar", 
+          style: "destructive", 
+          onPress: async () => {
+            try {
+              const response = await fetch(`${API_URL}/api/medications/${medId}`, {
+                method: 'DELETE'
+              });
+              if (response.ok) {
+                setMedications(prev => prev.filter(m => m.id !== medId));
+              } else {
+                console.error("Error al eliminar el medicamento");
+              }
+            } catch (e) {
+              console.error("Error al eliminar de la BD:", e);
+            }
+          } 
+        }
+      ]
+    );
   };
 
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -543,7 +931,8 @@ export default function AlarmsScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <StatusBar barStyle="dark-content" backgroundColor="#f8f9fb" />
       
       {/* Header matching screenshot */}
@@ -582,7 +971,7 @@ export default function AlarmsScreen() {
         </View>
 
         {/* Card 2: Nueva Alarma */}
-        <TouchableOpacity style={styles.newAlarmCard} activeOpacity={0.85} onPress={handleOpenManual}>
+        <TouchableOpacity style={styles.newAlarmCard} activeOpacity={0.85} onPress={handleNewAlarmPress}>
           <View style={styles.newAlarmLeft}>
             <View style={styles.newAlarmIconWrapper}>
               <Bell color="#ffffff" size={20} />
@@ -628,46 +1017,66 @@ export default function AlarmsScreen() {
         {/* Mis Medicamentos Section */}
         <Text style={styles.sectionTitle}>Mis medicamentos</Text>
 
-        {medications.map(med => (
-          <TouchableOpacity 
-            key={med.id} 
-            style={[styles.alarmCard, !med.active && styles.inactiveCard]}
-            activeOpacity={0.7}
-            onPress={() => {
-              router.push({
-                pathname: '/medication-alarms' as any,
-                params: { 
-                  medId: med.id, 
-                  medName: med.name,
-                  medDose: med.dose,
-                  medFrequency: med.frequency,
-                  medIcon: med.icon,
-                  medIconBg: med.iconBg,
-                  medAlarms: JSON.stringify(med.alarms)
-                }
-              });
-            }}
-          >
-            <View style={{ backgroundColor: med.iconBg, width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
-              {renderAlarmIcon(med.icon, "#003d9b")}
-            </View>
+        {medications.map(med => {
+          const renderLeftActions = () => (
+            <TouchableOpacity
+              style={styles.deleteSwipeBtn}
+              activeOpacity={0.8}
+              onPress={() => confirmDeleteMedication(med.id)}
+            >
+              <Trash2 color="#ffffff" size={24} />
+            </TouchableOpacity>
+          );
 
-            <View style={styles.alarmContent}>
-              <Text style={[styles.alarmMedName, !med.active && styles.inactiveText, { fontSize: 16 }]}>{med.name}</Text>
-              <Text style={[styles.alarmDose, { marginTop: 2 }]}>{med.dose} • {med.frequency}</Text>
-              <Text style={{ fontSize: 11, color: '#8e8e93', marginTop: 2, fontWeight: '500' }}>
-                {med.alarms.filter((a: any) => a.active).length} de {med.alarms.length} {med.alarms.length === 1 ? 'alarma activa' : 'alarmas activas'}
-              </Text>
-            </View>
+          return (
+            <View key={med.id} style={styles.swipeableContainer}>
+              <Swipeable
+                renderLeftActions={renderLeftActions}
+                friction={1.5}
+                leftThreshold={40}
+              >
+                <TouchableOpacity 
+                  style={[styles.alarmCard, !med.active && styles.inactiveCard, { marginBottom: 0 }]}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    router.push({
+                      pathname: '/medication-alarms' as any,
+                      params: { 
+                        medId: med.id, 
+                        medName: med.name,
+                        medDose: med.dose,
+                        medFrequency: med.frequency,
+                        medIcon: med.icon,
+                        medIconBg: med.iconBg,
+                        medAlarms: JSON.stringify(med.alarms),
+                        medHistory: JSON.stringify(med.history || [])
+                      }
+                    });
+                  }}
+                >
+                  <View style={{ backgroundColor: med.iconBg, width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
+                    {renderAlarmIcon(med.icon, "#003d9b")}
+                  </View>
 
-            <Switch
-              value={med.active}
-              onValueChange={() => toggleActive(med.id)}
-              trackColor={{ false: '#edeef0', true: '#003d9b' }}
-              thumbColor={med.active ? '#ffffff' : '#737685'}
-            />
-          </TouchableOpacity>
-        ))}
+                  <View style={styles.alarmContent}>
+                    <Text style={[styles.alarmMedName, !med.active && styles.inactiveText, { fontSize: 16 }]}>{med.name}</Text>
+                    <Text style={[styles.alarmDose, { marginTop: 2 }]}>{med.dose} • {med.frequency}</Text>
+                    <Text style={{ fontSize: 11, color: '#8e8e93', marginTop: 2, fontWeight: '500' }}>
+                      {med.alarms.filter((a: any) => a.active).length} de {med.alarms.length} {med.alarms.length === 1 ? 'alarma activa' : 'alarmas activas'}
+                    </Text>
+                  </View>
+
+                  <Switch
+                    value={med.active}
+                    onValueChange={() => toggleActive(med.id)}
+                    trackColor={{ false: '#edeef0', true: '#003d9b' }}
+                    thumbColor={med.active ? '#ffffff' : '#737685'}
+                  />
+                </TouchableOpacity>
+              </Swipeable>
+            </View>
+          );
+        })}
 
         <TouchableOpacity style={styles.completedLink} activeOpacity={0.7}>
           <Text style={styles.completedLinkText}>Ver tomas completadas (3)</Text>
@@ -675,10 +1084,7 @@ export default function AlarmsScreen() {
 
       </ScrollView>
 
-      {/* Floating Action Button exactly matching screenshot position */}
-      <TouchableOpacity style={styles.fab} activeOpacity={0.85} onPress={handleOpenManual}>
-        <Plus color="#ffffff" size={24} />
-      </TouchableOpacity>
+
 
       {/* Modal de Alarma Full-Screen */}
       <Modal
@@ -927,7 +1333,7 @@ export default function AlarmsScreen() {
 
                   {showFreqDropdown && (
                     <View style={styles.fsDropdown}>
-                      {['Cada 4 horas', 'Cada 6 horas', 'Cada 8 horas', 'Cada 12 horas', 'Cada 24 horas', 'Una vez al día'].map((opt) => (
+                      {['Cada 4 horas', 'Cada 6 horas', 'Cada 8 horas', 'Cada 12 horas', 'Una vez al día'].map((opt) => (
                         <TouchableOpacity 
                           key={opt} 
                           style={styles.fsDropdownItem}
@@ -980,12 +1386,19 @@ export default function AlarmsScreen() {
                           <TouchableOpacity 
                             style={styles.fsTimePill}
                             onPress={() => {
-                              const [h, mAmPm] = time.split(':');
-                              const [m, ampm] = mAmPm.split(' ');
-                              setTempHour(h);
-                              setTempMinute(m);
-                              setTempAmPm(ampm);
-                              setEditingTimeIndex(idx);
+                              const [timeStr, ampm] = time.split(' ');
+                              let [hoursStr, minutesStr] = timeStr.split(':');
+                              let hours = parseInt(hoursStr, 10);
+                              const minutes = parseInt(minutesStr, 10);
+                              if (ampm === 'PM' && hours < 12) hours += 12;
+                              if (ampm === 'AM' && hours === 12) hours = 0;
+
+                              const d = new Date();
+                              d.setHours(hours);
+                              d.setMinutes(minutes);
+                              setPickerDate(d);
+                              setPickerIndex(idx);
+                              setShowTimePicker(true);
                             }}
                           >
                             <Text style={styles.fsTimePillText}>{time}</Text>
@@ -993,58 +1406,6 @@ export default function AlarmsScreen() {
                         </View>
                         <Text style={styles.fsDoseLabel}>{formDose || '1 dosis'}</Text>
                       </View>
-
-                      {/* Inline Time Editor */}
-                      {editingTimeIndex === idx && (
-                        <View style={styles.inlineEditor}>
-                          <View style={styles.inlineInputs}>
-                            <TextInput
-                              style={styles.inlineInput}
-                              keyboardType="numeric"
-                              maxLength={2}
-                              value={tempHour}
-                              onChangeText={setTempHour}
-                            />
-                            <Text style={styles.inlineColon}>:</Text>
-                            <TextInput
-                              style={styles.inlineInput}
-                              keyboardType="numeric"
-                              maxLength={2}
-                              value={tempMinute}
-                              onChangeText={setTempMinute}
-                            />
-                            <View style={styles.inlineAmPmContainer}>
-                              {['AM', 'PM'].map((mode) => (
-                                <TouchableOpacity
-                                  key={mode}
-                                  style={[styles.inlineAmPmBtn, tempAmPm === mode && styles.inlineAmPmBtnActive]}
-                                  onPress={() => setTempAmPm(mode)}
-                                >
-                                  <Text style={[styles.inlineAmPmText, tempAmPm === mode && styles.inlineAmPmTextActive]}>
-                                    {mode}
-                                  </Text>
-                                </TouchableOpacity>
-                              ))}
-                            </View>
-                          </View>
-                          <TouchableOpacity 
-                            style={styles.inlineSaveBtn}
-                            onPress={() => {
-                              const formattedHr = tempHour.padStart(2, '0');
-                              const formattedMin = tempMinute.padStart(2, '0');
-                              const updatedTimes = calculateTimesFromFrequency(formattedHr, formattedMin, tempAmPm, formFrequency);
-                              setScheduledTimes(updatedTimes);
-                              
-                              setTimeHour(formattedHr);
-                              setTimeMinute(formattedMin);
-                              setTimeAmPm(tempAmPm);
-                              setEditingTimeIndex(null);
-                            }}
-                          >
-                            <Check color="#ffffff" size={16} />
-                          </TouchableOpacity>
-                        </View>
-                      )}
                     </View>
                   ))}
 
@@ -1188,10 +1549,50 @@ export default function AlarmsScreen() {
               <Text style={styles.fsNextBtnText}>
                 {currentStep < 5 
                   ? 'Continuar' 
-                  : (queue.length > 0 && currentQueueIndex + 1 < queue.length ? 'Siguiente Medicamento' : 'Guardar Alarma')}
+                  : (editingMedId !== null ? 'Guardar Cambios' : (queue.length > 0 && currentQueueIndex + 1 < queue.length ? 'Siguiente Medicamento' : 'Guardar Alarma'))}
               </Text>
             </TouchableOpacity>
           </View>
+          {showTimePicker && Platform.OS !== 'web' && (
+            Platform.OS === 'android' ? (
+              <DateTimePicker
+                value={pickerDate}
+                mode="time"
+                is24Hour={false}
+                display="spinner"
+                onChange={handleTimePickerChange}
+              />
+            ) : (
+              <Modal
+                transparent={true}
+                animationType="slide"
+                visible={showTimePicker}
+                onRequestClose={() => setShowTimePicker(false)}
+              >
+                <View style={styles.pickerModalOverlay}>
+                  <View style={styles.pickerModalContainer}>
+                    <View style={styles.pickerModalHeader}>
+                      <TouchableOpacity onPress={() => setShowTimePicker(false)}>
+                        <Text style={styles.pickerModalCancelText}>Cancelar</Text>
+                      </TouchableOpacity>
+                      <Text style={styles.pickerModalTitle}>Seleccionar Hora</Text>
+                      <TouchableOpacity onPress={() => setShowTimePicker(false)}>
+                        <Text style={styles.pickerModalConfirmText}>Hecho</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <DateTimePicker
+                      value={pickerDate}
+                      mode="time"
+                      is24Hour={false}
+                      display="spinner"
+                      textColor="#000000"
+                      onChange={handleTimePickerChange}
+                    />
+                  </View>
+                </View>
+              </Modal>
+            )
+          )}
         </SafeAreaView>
       </Modal>
 
@@ -1199,17 +1600,29 @@ export default function AlarmsScreen() {
       {activeAlarm && (
         <AlarmTriggerOverlay
           visible={!!activeAlarm}
-          medicationName={activeAlarm.medication.name}
-          medicationDose={activeAlarm.medication.dose}
-          medicationIcon={activeAlarm.medication.icon}
-          medicationIconBg={activeAlarm.medication.iconBg}
-          medicationFrequency={activeAlarm.medication.frequency}
-          alarmTime={activeAlarm.alarm.time}
-          onTake={() => handleAlarmTake(activeAlarm.medication.id, activeAlarm.alarm.id)}
-          onSnooze={() => handleAlarmSnooze(activeAlarm.medication.id, activeAlarm.alarm.id)}
+          medicationName={activeAlarm?.medication?.name || ''}
+          medicationDose={activeAlarm?.medication?.dose || ''}
+          medicationIcon={activeAlarm?.medication?.icon || 'pill'}
+          medicationIconBg={activeAlarm?.medication?.iconBg || '#007aff'}
+          medicationFrequency={activeAlarm?.medication?.frequency || ''}
+          alarmTime={activeAlarm?.alarm?.time || ''}
+          onTake={() => handleAlarmTake(activeAlarm?.medication?.id, activeAlarm?.alarm?.id)}
+          onSnooze={() => handleAlarmSnooze(activeAlarm?.medication?.id, activeAlarm?.alarm?.id)}
         />
       )}
+      {isProcessingOCR && (
+        <Modal transparent animationType="fade" visible={isProcessingOCR}>
+          <View style={styles.ocrLoaderOverlay}>
+            <View style={styles.ocrLoaderContent}>
+              <ActivityIndicator size="large" color="#003d9b" style={{ marginBottom: 16 }} />
+              <Text style={styles.ocrLoaderTitle}>Analizando Receta con Gemini</Text>
+              <Text style={styles.ocrLoaderDesc}>Extrayendo medicamentos, dosis y horarios de tu foto...</Text>
+            </View>
+          </View>
+        </Modal>
+      )}
     </SafeAreaView>
+    </GestureHandlerRootView>
   );
 }
 
@@ -1365,7 +1778,20 @@ const styles = StyleSheet.create({
     padding: 16,
     flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: 0,
+  },
+  swipeableContainer: {
     marginBottom: 12,
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: 'transparent',
+  },
+  deleteSwipeBtn: {
+    backgroundColor: '#ff3b30',
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 74,
+    height: '100%',
   },
   inactiveCard: {
     opacity: 0.6,
@@ -1843,6 +2269,70 @@ const styles = StyleSheet.create({
   calCellEmpty: {
     width: 36,
     height: 36,
+  },
+  pickerModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    justifyContent: 'flex-end',
+  },
+  pickerModalContainer: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingBottom: 40,
+  },
+  pickerModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f2f2f7',
+  },
+  pickerModalTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#000000',
+  },
+  pickerModalCancelText: {
+    fontSize: 16,
+    color: '#ff3b30',
+  },
+  pickerModalConfirmText: {
+    fontSize: 16,
+    color: '#007aff',
+    fontWeight: '600',
+  },
+  ocrLoaderOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  ocrLoaderContent: {
+    backgroundColor: '#ffffff',
+    padding: 24,
+    borderRadius: 16,
+    alignItems: 'center',
+    width: '80%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  ocrLoaderTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#003d9b',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  ocrLoaderDesc: {
+    fontSize: 14,
+    color: '#737685',
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });
 
