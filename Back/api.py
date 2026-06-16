@@ -36,6 +36,47 @@ use_case = ProcessRecipeUseCase(
     repository=repository
 )
 
+from datetime import datetime
+
+def calcular_edad(fecha_nacimiento_str: str) -> int:
+    try:
+        # fecha_nacimiento_str se espera en formato YYYY-MM-DD o YYYY/MM/DD o DD/MM/YYYY
+        # Soportar múltiples formatos comunes
+        fecha_nacimiento_str = fecha_nacimiento_str.replace("/", "-")
+        parts = fecha_nacimiento_str.split("-")
+        if len(parts) == 3:
+            # Si tiene formato DD-MM-YYYY
+            if len(parts[0]) == 2 and len(parts[2]) == 4:
+                birthdate = datetime.strptime(fecha_nacimiento_str, "%d-%m-%d" if len(parts[1]) == 2 else "%d-%m-%Y")
+            else:
+                birthdate = datetime.strptime(fecha_nacimiento_str, "%Y-%m-%d")
+        else:
+            birthdate = datetime.strptime(fecha_nacimiento_str, "%Y-%m-%d")
+        today = datetime.today()
+        return today.year - birthdate.year - ((today.month, today.day) < (birthdate.month, birthdate.day))
+    except Exception as e:
+        print(f"Error calculando edad: {e}")
+        return 0
+
+@app.get("/api/profile")
+async def get_profile():
+    try:
+        profile = repository.obtener_perfil_usuario()
+        if not profile:
+            return {}
+        profile["edad"] = calcular_edad(profile.get("fecha_nacimiento", ""))
+        return profile
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/profile")
+async def save_profile(request: dict):
+    try:
+        user_id = repository.guardar_o_actualizar_perfil_usuario(request)
+        return {"id": user_id, "status": "saved"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/recipes")
 async def get_recipes():
     try:
@@ -86,10 +127,31 @@ async def chat(request: dict):
         from infrastructure.clients.api_clients import get_groq_client
         client = get_groq_client()
         
+        # Determinar si es el inicio de la conversación (sin mensajes previos del usuario en el historial)
+        is_initial_stage = True
+        for msg in history:
+            if msg.get("role") == "user":
+                is_initial_stage = False
+                break
+        
+        # Palabras clave en español relacionadas con dolor o malestar físico
+        pain_keywords = ["dolor", "duele", "doliendo", "molestia", "malestar", "punzada", "cólico", "jaqueca", "migraña", "ardor", "siento mal", "enfermo"]
+        message_lower = message.lower()
+        has_pain = any(kw in message_lower for kw in pain_keywords)
+        
         system_instruction = (
-            "Eres el asistente médico virtual amigable de MediAssist AI. "
-            "Responde preguntas sobre salud, medicamentos y recetas de manera clara, comprensible, empática y concisa. "
-            "Si el usuario pregunta algo no relacionado con salud o medicina, recuérdale amigablemente que tu especialidad es el cuidado de la salud."
+            "Eres el asistente médico virtual amigable de MediAssist AI.\n"
+            "Tus respuestas deben ser muy concisas, breves y empáticas. Evita explicaciones largas, tecnicismos excesivos u oraciones innecesarias. "
+            "Si el usuario pregunta algo no relacionado con salud o medicina, recuérdale amigablemente que tu especialidad es el cuidado de la salud.\n\n"
+            "Sigue estrictamente estas pautas para estructurar la conversación:\n"
+            "1. Cuando el usuario te mencione un dolor o síntoma (especialmente al inicio):\n"
+            "   - Muestra empatía de forma muy breve (ej. 'Lamento escuchar eso', 'El dolor en X puede ser muy molesto' o similar, usando su nombre si ya lo conoces).\n"
+            "   - Explica brevemente y en palabras sencillas qué es o dónde está esa zona o síntoma si es relevante (ej. 'el coxis (la \"colita\" o hueso al final de la columna)').\n"
+            "   - Haz de inmediato 1 o 2 preguntas muy directas sobre cómo empezó (ej. '¿El dolor comenzó después de una caída, golpe, o estar sentada mucho tiempo?').\n"
+            "2. Cuando el usuario responda a tu pregunta sobre el origen/causa del síntoma:\n"
+            "   - Responde comenzando exactamente con la frase: '¡Perfecto, [Nombre]! Te explico lo que pienso hasta ahora:' (o similar, usando su nombre si lo sabes).\n"
+            "   - Explica de forma muy breve (un solo párrafo corto de 2 o 3 líneas) la causa del síntoma, relacionándolo de forma sencilla con su diagnóstico y cómo le ayudarán los medicamentos recetados a aliviarlo.\n"
+            "   - Sé sumamente directo y conciso."
         )
         
         messages = [{"role": "system", "content": system_instruction}]

@@ -1,40 +1,260 @@
-import React, { useState, useCallback } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, StatusBar, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, StatusBar, Platform, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { Briefcase, Camera, Wifi, Activity, Lightbulb, Heart, Clock, Bell, MessageSquare, User, Plus } from 'lucide-react-native';
+import { Briefcase, Camera, Wifi, Bell, MessageSquare, User, Calendar } from 'lucide-react-native';
 import { API_URL } from '../constants/api';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 export default function SummaryScreen() {
   const router = useRouter();
-  const [recipes, setRecipes] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState('Ricardo');
+  const [medications, setMedications] = useState<any[]>([]);
+  const [selectedDay, setSelectedDay] = useState<'today' | 'tomorrow' | 'after' | 'custom'>('today');
+  const [customDate, setCustomDate] = useState<Date>(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
-  const fetchRecipes = useCallback(async () => {
-    try {
-      const response = await fetch(`${API_URL}/api/recipes`);
-      if (!response.ok) {
-        throw new Error('No se pudieron obtener las recetas');
-      }
-      const data = await response.json();
-      setRecipes(data);
-      setError(null);
-    } catch (err: any) {
-      console.error('Error al cargar recetas:', err);
-      setError(err.message);
-    } finally {
-      setLoading(false);
+  const getFormattedCustomDate = () => {
+    const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+    return `${customDate.getDate()} ${months[customDate.getMonth()]}`;
+  };
+
+  const getSelectedDate = (): Date => {
+    const today = new Date();
+    if (selectedDay === 'today') {
+      return today;
+    } else if (selectedDay === 'tomorrow') {
+      const tomorrow = new Date();
+      tomorrow.setDate(today.getDate() + 1);
+      return tomorrow;
+    } else if (selectedDay === 'after') {
+      const after = new Date();
+      after.setDate(today.getDate() + 2);
+      return after;
+    } else {
+      return customDate;
     }
-  }, []);
+  };
+
+  const getMidnight = (date: Date): Date => {
+    const d = new Date(date.getTime());
+    d.setHours(0, 0, 0, 0);
+    return d;
+  };
+
+  const isToday = (date: Date) => {
+    const today = new Date();
+    return date.getDate() === today.getDate() &&
+      date.getMonth() === today.getMonth() &&
+      date.getFullYear() === today.getFullYear();
+  };
+
+  const getMedicationStartDate = (med: any): Date => {
+    let dateStr = med.receta_created_at || med.fecha_receta || med.created_at;
+    if (dateStr) {
+      const cleanDate = dateStr.split(' ')[0];
+      const parsed = new Date(cleanDate);
+      if (!isNaN(parsed.getTime())) {
+        return parsed;
+      }
+    }
+    return new Date(); // fallback to today
+  };
+
+  const getMedicationStartDateTime = (med: any): Date => {
+    let dateStr = med.created_at || med.receta_created_at || med.fecha_receta;
+    if (dateStr) {
+      const formatted = dateStr.replace(' ', 'T');
+      const parsed = new Date(formatted);
+      if (!isNaN(parsed.getTime())) {
+        return parsed;
+      }
+    }
+    return new Date();
+  };
+
+  const getAlarmDateTimeForDate = (alarmTime: string, date: Date): Date => {
+    const [timeStr, ampm] = alarmTime.split(' ');
+    let [hoursStr, minutesStr] = timeStr.split(':');
+    let hours = parseInt(hoursStr, 10);
+    const minutes = parseInt(minutesStr, 10);
+    if (ampm === 'PM' && hours < 12) hours += 12;
+    if (ampm === 'AM' && hours === 12) hours = 0;
+    
+    const d = new Date(date.getTime());
+    d.setHours(hours, minutes, 0, 0);
+    return d;
+  };
+
+  const getDurationDays = (durationStr: string): number => {
+    if (!durationStr) return 365 * 10;
+    const clean = durationStr.toLowerCase();
+    if (clean.includes('permanente') || clean.includes('indefinid') || clean.includes('continuo')) {
+      return 365 * 10;
+    }
+    const match = clean.match(/(\d+)/);
+    if (!match) return 365 * 10;
+    const val = parseInt(match[0], 10);
+    if (clean.includes('mes')) {
+      return val * 30;
+    }
+    if (clean.includes('año') || clean.includes('ano')) {
+      return val * 365;
+    }
+    if (clean.includes('semana')) {
+      return val * 7;
+    }
+    return val;
+  };
+
+  const isAlarmTakenOnDate = (med: any, alarmTime: string, date: Date) => {
+    const dateStr = date.toISOString().split('T')[0];
+    return (med.history || []).some((h: any) => 
+      (h.date === dateStr || (h.date === "Hoy" && isToday(date))) && 
+      h.time === alarmTime && 
+      h.status === "taken"
+    );
+  };
+
+  const fetchMedications = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/medications`);
+      if (response.ok) {
+        const data = await response.json();
+        setMedications(data);
+      }
+    } catch (e) {
+      console.error("Error fetching medications in index:", e);
+    }
+  };
+
+  const handleToggleAlarm = async (medId: number, alarmId: number) => {
+    const targetDate = getSelectedDate();
+    const targetDateStr = targetDate.toISOString().split('T')[0];
+    const isTargetToday = isToday(targetDate);
+    
+    const med = medications.find(m => m.id === medId);
+    if (!med) return;
+    
+    const alarm = med.alarms.find((a: any) => a.id === alarmId);
+    if (!alarm) return;
+    
+    const currentlyTaken = isAlarmTakenOnDate(med, alarm.time, targetDate);
+    const newStatus = currentlyTaken ? 'pending' : 'taken';
+    
+    // Update local alarm status ONLY if target date is today
+    let updatedAlarms = med.alarms;
+    if (isTargetToday) {
+      updatedAlarms = med.alarms.map((a: any) => a.id === alarmId ? { ...a, status: newStatus } : a);
+    }
+    
+    let updatedHistory = [...(med.history || [])];
+    if (newStatus === 'taken') {
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: true });
+      const historyItem = {
+        id: Date.now(),
+        date: targetDateStr,
+        time: alarm.time,
+        status: "taken",
+        takenAt: timeStr
+      };
+      updatedHistory = [historyItem, ...updatedHistory];
+    } else {
+      updatedHistory = updatedHistory.filter((h: any) => 
+        !( (h.date === targetDateStr || (h.date === "Hoy" && isTargetToday)) && h.time === alarm.time )
+      );
+    }
+    
+    const updatedMed = {
+      ...med,
+      alarms: updatedAlarms,
+      history: updatedHistory
+    };
+    
+    setMedications(prev => prev.map(m => m.id === medId ? updatedMed : m));
+    
+    try {
+      await fetch(`${API_URL}/api/medications/${medId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updatedMed),
+      });
+    } catch (e) {
+      console.error("Error al actualizar estado de la toma:", e);
+    }
+  };
+
+  const parseTime = (timeStr: string) => {
+    if (!timeStr) return 0;
+    const parts = timeStr.split(' ');
+    if (parts.length < 2) return 0;
+    const time = parts[0];
+    const ampm = parts[1];
+    let [hours, minutes] = time.split(':').map(Number);
+    if (ampm === 'PM' && hours < 12) hours += 12;
+    if (ampm === 'AM' && hours === 12) hours = 0;
+    return hours * 60 + minutes;
+  };
+
+  const getFilteredMedicationsForSelectedDay = () => {
+    const targetMidnight = getMidnight(getSelectedDate());
+    return medications.filter(m => {
+      if (!m.active) return false;
+      
+      const startDate = getMidnight(getMedicationStartDate(m));
+      const durationDays = getDurationDays(m.duration);
+      
+      const endDate = new Date(startDate.getTime());
+      endDate.setDate(startDate.getDate() + durationDays - 1);
+      
+      return targetMidnight >= startDate && targetMidnight <= endDate;
+    });
+  };
+
+  const activeMeds = getFilteredMedicationsForSelectedDay();
+  const targetDate = getSelectedDate();
+  const alarmItems = activeMeds.flatMap(med => {
+    const startDateTime = getMedicationStartDateTime(med);
+    const startWithGrace = new Date(startDateTime.getTime() - 30 * 60 * 1000);
+    return (med.alarms || [])
+      .filter((alarm: any) => {
+        const alarmDateTime = getAlarmDateTimeForDate(alarm.time, targetDate);
+        return alarmDateTime >= startWithGrace;
+      })
+      .map((alarm: any) => ({
+        medId: med.id,
+        medName: med.name,
+        medDose: med.dose,
+        icon: med.icon,
+        iconBg: med.iconBg,
+        alarm
+      }));
+  }).sort((a, b) => parseTime(a.alarm.time) - parseTime(b.alarm.time));
+
+  const fetchProfileName = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/profile`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data.username) {
+          const firstName = data.username.split(' ')[0];
+          setDisplayName(firstName);
+        }
+      }
+    } catch (e) {
+      console.error("Error al cargar nombre del perfil en index:", e);
+    }
+  };
 
   useFocusEffect(
-    useCallback(() => {
-      fetchRecipes();
-    }, [fetchRecipes])
+    React.useCallback(() => {
+      fetchProfileName();
+      fetchMedications();
+    }, [])
   );
-
-  const latestRecipe = recipes[0]; // La lista viene ordenada descendente por id (última receta primero)
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -60,256 +280,221 @@ export default function SummaryScreen() {
         contentContainerStyle={styles.scrollContent} 
         showsVerticalScrollIndicator={false}
       >
-        {loading && recipes.length === 0 ? (
-          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 100 }}>
-            <ActivityIndicator size="large" color="#003d9b" />
-            <Text style={{ marginTop: 12, color: '#737685', fontWeight: '600' }}>Cargando dashboard...</Text>
+        {/* Welcome & Info */}
+        <View style={styles.welcomeSection}>
+          <View>
+            <Text style={styles.welcomeTitle}>¡Hola, {displayName}!</Text>
+            <Text style={styles.welcomeSubtitle}>Tu salud está monitoreada y estable</Text>
           </View>
-        ) : (
-          <>
-            {/* Welcome & Info */}
-            <View style={styles.welcomeSection}>
-              <View>
-                <Text style={styles.welcomeTitle}>¡Hola, Ricardo!</Text>
-                <Text style={styles.welcomeSubtitle}>Tu salud está monitoreada y estable</Text>
-              </View>
-              <View style={styles.avatarCircle}>
-                <Text style={{ fontSize: 20 }}>👨</Text>
-              </View>
+          <View style={styles.avatarCircle}>
+            <User color="#003d9b" size={20} />
+          </View>
+        </View>
+
+        {/* Quick Actions Grid */}
+        <View style={styles.gridContainer}>
+          <TouchableOpacity style={styles.gridItemCard} onPress={() => router.push('/scan')}>
+            <View style={[styles.gridIconBg, { backgroundColor: '#c4d2ff30' }]}>
+              <Camera color="#003d9b" size={24} />
             </View>
+            <Text style={styles.gridItemTitle}>Escanear Receta</Text>
+            <Text style={styles.gridItemDesc}>Digitalizar con IA</Text>
+          </TouchableOpacity>
 
-            {/* Vitals Summary Card */}
-            <View style={styles.vitalCardDashboard}>
-              <Text style={styles.vitalCardTitle}>Tus Constantes Vitales</Text>
-              <View style={styles.vitalGridDashboard}>
-                <View style={styles.vitalColDashboard}>
-                  <Text style={styles.vitalLabelDashboard}>RITMO</Text>
-                  <Text style={styles.vitalValDashboard}>72 lpm</Text>
-                </View>
-                <View style={styles.vitalColDashboard}>
-                  <Text style={styles.vitalLabelDashboard}>SPO2</Text>
-                  <Text style={styles.vitalValDashboard}>98%</Text>
-                </View>
-                <View style={styles.vitalColDashboard}>
-                  <Text style={styles.vitalLabelDashboard}>SUEÑO</Text>
-                  <Text style={styles.vitalValDashboard}>7.5 h</Text>
-                </View>
-              </View>
+          <TouchableOpacity style={styles.gridItemCard} onPress={() => router.push('/chat')}>
+            <View style={[styles.gridIconBg, { backgroundColor: '#82f9be30' }]}>
+              <MessageSquare color="#00734c" size={24} />
             </View>
+            <Text style={styles.gridItemTitle}>Consultar Chat</Text>
+            <Text style={styles.gridItemDesc}>Asistente virtual</Text>
+          </TouchableOpacity>
+        </View>
 
-            {/* Quick Actions Grid */}
-            <View style={styles.gridContainer}>
-              <TouchableOpacity style={styles.gridItemCard} onPress={() => router.push('/scan')}>
-                <View style={[styles.gridIconBg, { backgroundColor: '#c4d2ff30' }]}>
-                  <Camera color="#003d9b" size={24} />
-                </View>
-                <Text style={styles.gridItemTitle}>Escanear Receta</Text>
-                <Text style={styles.gridItemDesc}>Digitalizar con IA</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.gridItemCard} onPress={() => router.push('/chat')}>
-                <View style={[styles.gridIconBg, { backgroundColor: '#82f9be30' }]}>
-                  <MessageSquare color="#00734c" size={24} />
-                </View>
-                <Text style={styles.gridItemTitle}>Consultar Chat</Text>
-                <Text style={styles.gridItemDesc}>Asistente virtual</Text>
-              </TouchableOpacity>
+        <View style={[styles.gridContainer, { marginTop: 12, marginBottom: 20 }]}>
+          <TouchableOpacity style={styles.gridItemCard} onPress={() => router.push('/alarms')}>
+            <View style={[styles.gridIconBg, { backgroundColor: '#fff2e0' }]}>
+              <Bell color="#b25e00" size={24} />
             </View>
+            <Text style={styles.gridItemTitle}>Mis Alarmas</Text>
+            <Text style={styles.gridItemDesc}>Control de dosis</Text>
+          </TouchableOpacity>
 
-            <View style={[styles.gridContainer, { marginTop: 12, marginBottom: 20 }]}>
-              <TouchableOpacity style={styles.gridItemCard} onPress={() => router.push('/alarms')}>
-                <View style={[styles.gridIconBg, { backgroundColor: '#fff2e0' }]}>
-                  <Bell color="#b25e00" size={24} />
-                </View>
-                <Text style={styles.gridItemTitle}>Mis Alarmas</Text>
-                <Text style={styles.gridItemDesc}>Control de dosis</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.gridItemCard} onPress={() => router.push('/profile')}>
-                <View style={[styles.gridIconBg, { backgroundColor: '#fcdbe4' }]}>
-                  <User color="#ba1a1a" size={24} />
-                </View>
-                <Text style={styles.gridItemTitle}>Mi Perfil</Text>
-                <Text style={styles.gridItemDesc}>Historial médico</Text>
-              </TouchableOpacity>
+          <TouchableOpacity style={styles.gridItemCard} onPress={() => router.push('/profile')}>
+            <View style={[styles.gridIconBg, { backgroundColor: '#fcdbe4' }]}>
+              <User color="#ba1a1a" size={24} />
             </View>
+            <Text style={styles.gridItemTitle}>Mi Perfil</Text>
+            <Text style={styles.gridItemDesc}>Historial médico</Text>
+          </TouchableOpacity>
+        </View>
 
-            {/* Card 1: Lo que significa tu receta */}
-            <View style={styles.prescriptionMeaningCard}>
-              <Text style={styles.prescriptionMeaningTitle}>Lo que significa tu receta</Text>
-              {latestRecipe ? (
-                renderMarkdown(latestRecipe.explicacion, styles.prescriptionMeaningText, false)
-              ) : (
-                <Text style={styles.prescriptionMeaningText}>
-                  No tienes recetas activas. Presiona el botón 'Escanear Receta' arriba para digitalizar tu primera fórmula médica.
-                </Text>
-              )}
-            </View>
-
-            {/* Card 2: Estado Actual */}
-            <View style={styles.statusCard}>
-              <View style={styles.statusLabelRow}>
-                <Activity color="#006c47" size={16} />
-                <Text style={styles.statusLabel}>ESTADO ACTUAL</Text>
-              </View>
-              <Text style={styles.statusTitle}>
-                {latestRecipe?.diagnostico_descripcion || (latestRecipe ? "Tratamiento Activo" : "Sin tratamientos activos")}
-              </Text>
-              <Text style={styles.statusSubtitle}>
-                {latestRecipe
-                  ? `Receta para ${latestRecipe.paciente_nombre || "el paciente"} emitida por ${latestRecipe.medico_nombre || "médico"} en ${latestRecipe.clinica_nombre || "clínica"}.`
-                  : "Tu historial está limpio. Las recetas digitalizadas aparecerán aquí automáticamente."
-                }
-              </Text>
-              <View style={styles.progressBarSection}>
-                <View style={styles.progressBarBg}>
-                  <View style={[styles.progressBarFill, { width: latestRecipe ? '100%' : '0%' }]} />
-                </View>
-                <Text style={styles.progressText}>{latestRecipe ? "100%" : "0%"} completado</Text>
-              </View>
-            </View>
-
-            {/* Card 3: Consejo Pro */}
-            {latestRecipe && (
-              <View style={styles.proTipCard}>
-                <View style={styles.proTipHeader}>
-                  <Lightbulb color="#FFAB00" size={16} fill="#FFAB00" />
-                  <Text style={styles.proTipTitle}>CONSEJO PRO</Text>
-                </View>
-                <Text style={styles.proTipText}>
-                  Toma tus medicamentos a las horas indicadas. Si experimentas efectos secundarios, consulta con tu médico de inmediato.
-                </Text>
-                {/* Mock Image Representation */}
-                <View style={styles.mockImageContainer}>
-                  <View style={styles.glassOfWater}>
-                    <Text style={styles.mockImageEmoji}>🍋🥛</Text>
-                    <Text style={styles.mockImageLabel}>Mantente hidratado durante tu recuperación</Text>
+        {/* Agenda de Medicamentos */}
+        <View style={styles.agendaSection}>
+          <Text style={styles.agendaTitle}>Plan de Medicación</Text>
+          
+          {/* Day Selector Tabs */}
+          <View style={styles.daySelectorRow}>
+            {(
+              [
+                { id: 'today', label: 'Hoy' },
+                { id: 'tomorrow', label: 'Mañana' },
+                { id: 'after', label: getDayAfterTomorrowName() },
+                { id: 'custom', label: selectedDay === 'custom' ? getFormattedCustomDate() : 'Elegir' }
+              ] as Array<{ id: 'today' | 'tomorrow' | 'after' | 'custom'; label: string }>
+            ).map(day => (
+              <TouchableOpacity
+                key={day.id}
+                style={[
+                  styles.dayTab,
+                  selectedDay === day.id && styles.dayTabActive
+                ]}
+                onPress={() => {
+                  if (day.id === 'custom') {
+                    setShowDatePicker(true);
+                  } else {
+                    setSelectedDay(day.id);
+                  }
+                }}
+              >
+                {day.id === 'custom' && selectedDay !== 'custom' ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Calendar size={12} color="#737685" />
+                    <Text style={styles.dayTabText}>{day.label}</Text>
                   </View>
-                </View>
-              </View>
-            )}
-
-            {/* Tus Medicamentos Section */}
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Tus Medicamentos</Text>
-              <View style={styles.activeBadge}>
-                <Text style={styles.activeBadgeText}>
-                  {latestRecipe?.medicamentos ? `${latestRecipe.medicamentos.length} Activos` : "0 Activos"}
-                </Text>
-              </View>
-            </View>
-
-            {/* Dynamic Medications List */}
-            {latestRecipe?.medicamentos && latestRecipe.medicamentos.map((med: any, index: number) => (
-              <View key={med.id || index} style={styles.medCard}>
-                <View style={index % 2 === 0 ? styles.medIconWrapperBlue : styles.medIconWrapperGreen}>
-                  <Text style={index % 2 === 0 ? styles.medIconTextBlue : styles.medIconTextGreen}>💊</Text>
-                </View>
-                <View style={styles.medDetails}>
-                  <View style={styles.medRow}>
-                    <Text style={styles.medName}>{med.nombre} {med.dosis || ""}</Text>
-                    <Text style={styles.medFreq}>{med.frecuencia}</Text>
-                  </View>
-                  <Text style={styles.medDesc}>Duración: {med.duracion || "No especificada"}</Text>
-                  {med.brand_name && (
-                    <Text style={[styles.medDesc, { fontSize: 11, fontStyle: 'italic', marginTop: 2 }]}>
-                      Marca sugerida: {med.brand_name}
-                    </Text>
-                  )}
-                  <View style={styles.medTimeRow}>
-                    <Clock size={12} color="#737685" />
-                    <Text style={styles.medTimeText}>Frecuencia: {med.frecuencia}</Text>
-                  </View>
-                </View>
-              </View>
+                ) : (
+                  <Text style={[
+                    styles.dayTabText,
+                    selectedDay === day.id && styles.dayTabTextActive
+                  ]}>
+                    {day.label}
+                  </Text>
+                )}
+              </TouchableOpacity>
             ))}
+          </View>
 
-            {(!latestRecipe || !latestRecipe.medicamentos || latestRecipe.medicamentos.length === 0) && (
-              <View style={{ padding: 24, backgroundColor: '#ffffff', borderRadius: 16, borderStyle: 'dashed', borderWidth: 1, borderColor: '#edeef0', alignItems: 'center', marginBottom: 20 }}>
-                <Text style={{ fontSize: 32, marginBottom: 8 }}>📋</Text>
-                <Text style={{ fontSize: 14, color: '#737685', textAlign: 'center' }}>
-                  No se encontraron medicamentos activos. Escanea una nueva fórmula para verla aquí.
-                </Text>
-              </View>
-            )}
+          {showDatePicker && (
+            Platform.OS === 'ios' ? (
+              <Modal
+                transparent={true}
+                animationType="slide"
+                visible={showDatePicker}
+                onRequestClose={() => setShowDatePicker(false)}
+              >
+                <View style={styles.modalOverlay}>
+                  <View style={styles.pickerModalContainer}>
+                    <View style={styles.pickerModalHeader}>
+                      <Text style={styles.pickerModalTitle}>Seleccionar Fecha</Text>
+                      <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                        <Text style={styles.pickerDoneText}>Hecho</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <DateTimePicker
+                      value={customDate}
+                      mode="date"
+                      display="spinner"
+                      themeVariant="light"
+                      onChange={(event, date) => {
+                        if (date) {
+                          setCustomDate(date);
+                          const today = new Date();
+                          if (
+                            date.getDate() === today.getDate() &&
+                            date.getMonth() === today.getMonth() &&
+                            date.getFullYear() === today.getFullYear()
+                          ) {
+                            setSelectedDay('today');
+                          } else {
+                            setSelectedDay('custom');
+                          }
+                        }
+                      }}
+                    />
+                  </View>
+                </View>
+              </Modal>
+            ) : (
+              <DateTimePicker
+                value={customDate}
+                mode="date"
+                display="default"
+                onChange={(event, date) => {
+                  setShowDatePicker(false);
+                  if (date) {
+                    setCustomDate(date);
+                    const today = new Date();
+                    if (
+                      date.getDate() === today.getDate() &&
+                      date.getMonth() === today.getMonth() &&
+                      date.getFullYear() === today.getFullYear()
+                    ) {
+                      setSelectedDay('today');
+                    } else {
+                      setSelectedDay('custom');
+                    }
+                  }
+                }}
+              />
+            )
+          )}
 
-            {/* Configurar Alarmas Button */}
-            <TouchableOpacity 
-              style={styles.actionBtn} 
-              activeOpacity={0.8}
-              onPress={() => router.push('/alarms')}
-            >
-              <Bell color="#ffffff" size={20} style={{ marginRight: 8 }} />
-              <Text style={styles.actionBtnText}>Configurar Alarmas</Text>
-            </TouchableOpacity>
-            
-            <Text style={styles.actionSubtext}>Te avisaremos 5 minutos antes de cada toma</Text>
-          </>
-        )}
+          {/* List of Intakes */}
+          {alarmItems.length === 0 ? (
+            <View style={styles.emptyAgenda}>
+              <Text style={styles.emptyAgendaText}>
+                No hay alarmas activas programadas para este día.
+              </Text>
+            </View>
+          ) : (
+            alarmItems.map((item, idx) => {
+              const targetDate = getSelectedDate();
+              const med = medications.find(m => m.id === item.medId);
+              const isTaken = isAlarmTakenOnDate(med, item.alarm.time, targetDate);
+              return (
+                <View key={idx} style={[styles.intakeCard, isTaken && styles.intakeCardTaken]}>
+                  <View style={styles.intakeLeft}>
+                    <View style={[styles.intakeIconBg, { backgroundColor: item.iconBg }]}>
+                      <Text style={{ fontSize: 16 }}>💊</Text>
+                    </View>
+                    <View style={{ marginLeft: 12, flex: 1 }}>
+                      <Text style={[styles.intakeMedName, isTaken && styles.textLineThrough]}>
+                        {item.medName}
+                      </Text>
+                      <Text style={styles.intakeDose}>{item.medDose}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.intakeRight}>
+                    <View style={[styles.timeBadge, isTaken && styles.timeBadgeTaken]}>
+                      <Text style={[styles.timeBadgeText, isTaken && styles.timeBadgeTextTaken]}>
+                        {item.alarm.time}
+                      </Text>
+                    </View>
+
+                    <TouchableOpacity
+                      style={[styles.checkCircle, isTaken && styles.checkCircleActive]}
+                      onPress={() => handleToggleAlarm(item.medId, item.alarm.id)}
+                    >
+                      {isTaken && <Text style={styles.checkMark}>✓</Text>}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              );
+            })
+          )}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-const renderMarkdown = (text: string, defaultStyle: any, isDarkHeader: boolean = false) => {
-  if (!text) return null;
-
-  const lines = text.split('\n');
-  return lines.map((line, lineIndex) => {
-    let cleanLine = line.trim();
-    if (!cleanLine) return <View key={lineIndex} style={{ height: 6 }} />;
-
-    if (cleanLine.startsWith('###')) {
-      const headerText = cleanLine.replace(/###\s*\**/g, '').replace(/\**/g, '').trim();
-      return (
-        <Text 
-          key={lineIndex} 
-          style={{ 
-            fontSize: 15, 
-            fontWeight: '800', 
-            color: isDarkHeader ? '#191c1e' : '#ffffff', 
-            marginTop: 10, 
-            marginBottom: 4 
-          }}
-        >
-          {headerText}
-        </Text>
-      );
-    }
-
-    if (cleanLine.startsWith('-')) {
-      const bulletContent = cleanLine.substring(1).trim();
-      return (
-        <View key={lineIndex} style={{ flexDirection: 'row', alignItems: 'flex-start', marginVertical: 2, paddingLeft: 4 }}>
-          <Text style={[defaultStyle, { marginRight: 6 }]}>•</Text>
-          <Text style={[defaultStyle, { flex: 1 }]}>
-            {parseInlineStyles(bulletContent, isDarkHeader)}
-          </Text>
-        </View>
-      );
-    }
-
-    return (
-      <Text key={lineIndex} style={[defaultStyle, { marginVertical: 3, lineHeight: 18 }]}>
-        {parseInlineStyles(cleanLine, isDarkHeader)}
-      </Text>
-    );
-  });
-};
-
-const parseInlineStyles = (text: string, isDarkHeader: boolean) => {
-  const parts = text.split(/(\*\*.*?\*\*)/g);
-  return parts.map((part, index) => {
-    if (part.startsWith('**') && part.endsWith('**')) {
-      return (
-        <Text key={index} style={{ fontWeight: '800', color: isDarkHeader ? '#191c1e' : '#ffffff' }}>
-          {part.substring(2, part.length - 2)}
-        </Text>
-      );
-    }
-    return part;
-  });
-};
+// Helper para obtener el nombre de pasado mañana
+function getDayAfterTomorrowName() {
+  const days = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+  const d = new Date();
+  d.setDate(d.getDate() + 2);
+  return days[d.getMonth() === 11 && d.getDate() === 31 ? 0 : d.getDay()];
+}
 
 const styles = StyleSheet.create({
   safeArea: {
@@ -347,250 +532,13 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 20,
     paddingTop: 16,
-    paddingBottom: 120, // Extra space at the bottom to prevent covering
-  },
-  prescriptionMeaningCard: {
-    backgroundColor: '#003d9b',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
-  },
-  prescriptionMeaningTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#ffffff',
-    marginBottom: 10,
-  },
-  prescriptionMeaningText: {
-    fontSize: 14,
-    color: '#ffffffd0',
-    lineHeight: 20,
-  },
-  statusCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#edeef0',
-    marginBottom: 16,
-  },
-  statusLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  statusLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#006c47',
-    marginLeft: 6,
-    letterSpacing: 0.5,
-  },
-  statusTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#191c1e',
-    marginBottom: 6,
-  },
-  statusSubtitle: {
-    fontSize: 13,
-    color: '#737685',
-    lineHeight: 18,
-    marginBottom: 14,
-  },
-  progressBarSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  progressBarBg: {
-    flex: 1,
-    height: 8,
-    backgroundColor: '#edeef0',
-    borderRadius: 4,
-    marginRight: 12,
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: '100%',
-    backgroundColor: '#006c47',
-    borderRadius: 4,
-  },
-  progressText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#006c47',
-  },
-  proTipCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#edeef0',
-    borderLeftWidth: 4,
-    borderLeftColor: '#FFAB00',
-    marginBottom: 24,
-  },
-  proTipHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  proTipTitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#5e3c00',
-    marginLeft: 6,
-    letterSpacing: 0.5,
-  },
-  proTipText: {
-    fontSize: 13,
-    color: '#191c1e',
-    lineHeight: 18,
-    marginBottom: 12,
-  },
-  mockImageContainer: {
-    height: 100,
-    backgroundColor: '#f8f9fb',
-    borderRadius: 12,
-    overflow: 'hidden',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#edeef0',
-  },
-  glassOfWater: {
-    alignItems: 'center',
-  },
-  mockImageEmoji: {
-    fontSize: 28,
-  },
-  mockImageLabel: {
-    fontSize: 11,
-    color: '#737685',
-    marginTop: 4,
-    fontWeight: '500',
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#191c1e',
-  },
-  activeBadge: {
-    backgroundColor: '#82f9be',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
-    marginLeft: 8,
-  },
-  activeBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#00734c',
-  },
-  medCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#edeef0',
-    padding: 16,
-    flexDirection: 'row',
-    marginBottom: 12,
-  },
-  medIconWrapperBlue: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: '#c4d2ff30',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  medIconTextBlue: {
-    fontSize: 18,
-  },
-  medIconWrapperGreen: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: '#82f9be30',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  medIconTextGreen: {
-    fontSize: 18,
-  },
-  medDetails: {
-    flex: 1,
-  },
-  medRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  medName: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#191c1e',
-  },
-  medFreq: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#00734c',
-  },
-  medDesc: {
-    fontSize: 13,
-    color: '#737685',
-    marginTop: 4,
-    lineHeight: 18,
-  },
-  medTimeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  medTimeText: {
-    fontSize: 12,
-    color: '#737685',
-    marginLeft: 6,
-    fontWeight: '500',
-  },
-  actionBtn: {
-    backgroundColor: '#003d9b',
-    height: 52,
-    borderRadius: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 12,
-    shadowColor: '#003d9b',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    elevation: 3,
-  },
-  actionBtnText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  actionSubtext: {
-    fontSize: 11,
-    color: '#737685',
-    textAlign: 'center',
-    marginTop: 8,
+    paddingBottom: 120,
   },
   welcomeSection: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 20,
     paddingVertical: 4,
   },
   welcomeTitle: {
@@ -607,43 +555,9 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#edeef0',
+    backgroundColor: '#0052cc10',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#edeef0',
-  },
-  vitalCardDashboard: {
-    backgroundColor: '#001848',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-  },
-  vitalCardTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#ffffff',
-    marginBottom: 12,
-  },
-  vitalGridDashboard: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  vitalColDashboard: {
-    alignItems: 'center',
-    width: '30%',
-  },
-  vitalLabelDashboard: {
-    fontSize: 10,
-    color: '#ffffff80',
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    marginBottom: 4,
-  },
-  vitalValDashboard: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#ffffff',
   },
   gridContainer: {
     flexDirection: 'row',
@@ -676,4 +590,170 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#737685',
   },
+  // Agenda Section styles
+  agendaSection: {
+    marginTop: 24,
+  },
+  agendaTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#191c1e',
+    marginBottom: 16,
+  },
+  daySelectorRow: {
+    flexDirection: 'row',
+    backgroundColor: '#edeef0',
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 16,
+  },
+  dayTab: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  dayTabActive: {
+    backgroundColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  dayTabText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#737685',
+  },
+  dayTabTextActive: {
+    color: '#003d9b',
+    fontWeight: '700',
+  },
+  emptyAgenda: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#edeef0',
+    padding: 24,
+    alignItems: 'center',
+  },
+  emptyAgendaText: {
+    color: '#737685',
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  intakeCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#edeef0',
+    padding: 14,
+    marginBottom: 10,
+  },
+  intakeCardTaken: {
+    backgroundColor: '#f8f9fb',
+    borderColor: '#edeef0',
+    opacity: 0.8,
+  },
+  intakeLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  intakeIconBg: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  intakeMedName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#191c1e',
+  },
+  textLineThrough: {
+    textDecorationLine: 'line-through',
+    color: '#737685',
+  },
+  intakeDose: {
+    fontSize: 12,
+    color: '#737685',
+    marginTop: 2,
+  },
+  intakeRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  timeBadge: {
+    backgroundColor: '#c4d2ff30',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  timeBadgeTaken: {
+    backgroundColor: '#82f9be30',
+  },
+  timeBadgeText: {
+    fontSize: 11,
+    color: '#003d9b',
+    fontWeight: '700',
+  },
+  timeBadgeTextTaken: {
+    color: '#00734c',
+  },
+  checkCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#003d9b',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkCircleActive: {
+    backgroundColor: '#00734c',
+    borderColor: '#00734c',
+  },
+  checkMark: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    justifyContent: 'flex-end',
+  },
+  pickerModalContainer: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 40,
+    paddingTop: 16,
+  },
+  pickerModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#edeef0',
+  },
+  pickerModalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#191c1e',
+  },
+  pickerDoneText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0052cc',
+  },
+
 });

@@ -433,6 +433,7 @@ export default function AlarmsScreen() {
 
   // Modal & Form States
   const [modalVisible, setModalVisible] = useState(false);
+  const [showCompletedModal, setShowCompletedModal] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
   const [isProcessingOCR, setIsProcessingOCR] = useState(false);
   const [queue, setQueue] = useState<any[]>([]);
@@ -441,8 +442,46 @@ export default function AlarmsScreen() {
 
   const [formMedName, setFormMedName] = useState('');
   const [formDose, setFormDose] = useState('');
+  const [formPrescribedQuantity, setFormPrescribedQuantity] = useState('');
   const [formFrequency, setFormFrequency] = useState('Cada 12 horas');
   const [formTime, setFormTime] = useState('08:00 AM');
+
+  useEffect(() => {
+    if (!formPrescribedQuantity) return;
+    
+    const qtyMatch = formPrescribedQuantity.match(/(\d+)/);
+    if (!qtyMatch) return;
+    const qty = parseInt(qtyMatch[0], 10);
+    if (isNaN(qty) || qty <= 0) return;
+
+    let doseQty = 1;
+    const doseMatch = formDose.match(/(\d+(\.\d+)?)/);
+    if (doseMatch) {
+      doseQty = parseFloat(doseMatch[0]);
+    }
+    if (isNaN(doseQty) || doseQty <= 0) doseQty = 1;
+
+    let intakesPerDay = 1;
+    const freq = formFrequency.toLowerCase();
+    if (freq.includes('24') || freq.includes('día') || freq.includes('dia') || freq.includes('una vez')) {
+      intakesPerDay = 1;
+    } else if (freq.includes('12') || freq.includes('doce') || freq.includes('dos veces')) {
+      intakesPerDay = 2;
+    } else if (freq.includes('8') || freq.includes('ocho') || freq.includes('tres veces')) {
+      intakesPerDay = 3;
+    } else if (freq.includes('6') || freq.includes('seis') || freq.includes('cuatro veces')) {
+      intakesPerDay = 4;
+    } else if (freq.includes('4') || freq.includes('cuatro')) {
+      intakesPerDay = 6;
+    }
+    
+    const dosesPerDay = intakesPerDay * doseQty;
+    const days = Math.ceil(qty / dosesPerDay);
+    if (days > 0 && days < 1000) {
+      setDurationValue(days.toString());
+      setDurationUnit('días');
+    }
+  }, [formPrescribedQuantity, formDose, formFrequency]);
   
   // Duration Value & Unit Configurable States
   const [durationValue, setDurationValue] = useState('7');
@@ -566,6 +605,7 @@ export default function AlarmsScreen() {
 
     setFormMedName(medName);
     setFormDose(medDose);
+    setFormPrescribedQuantity('');
     setFormFrequency(freq);
     
     const parsedDur = parseImportedDuration(duration);
@@ -692,6 +732,7 @@ export default function AlarmsScreen() {
     setCurrentQueueIndex(0);
     setFormMedName('');
     setFormDose('');
+    setFormPrescribedQuantity('');
     setFormFrequency('Cada 12 horas');
     setDurationValue('7');
     setDurationUnit('días');
@@ -930,6 +971,11 @@ export default function AlarmsScreen() {
     }
   };
 
+  const activeMeds = medications.filter(m => m.active);
+  const totalAlarms = activeMeds.reduce((sum, m) => sum + (m.alarms ? m.alarms.length : 0), 0);
+  const completedAlarms = activeMeds.reduce((sum, m) => sum + (m.alarms ? m.alarms.filter((a: any) => a.status === 'taken').length : 0), 0);
+  const progressPercent = totalAlarms > 0 ? Math.round((completedAlarms / totalAlarms) * 100) : 0;
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -955,16 +1001,22 @@ export default function AlarmsScreen() {
         <View style={styles.progressCard}>
           <View style={styles.progressCardLeft}>
             <Text style={styles.progressCardTitle}>Progreso del día</Text>
-            <Text style={styles.progressCardDesc}>Has completado el 75% de tus tomas.</Text>
+            <Text style={styles.progressCardDesc}>
+              {totalAlarms > 0 
+                ? `Has completado el ${progressPercent}% de tus tomas.` 
+                : "No hay alarmas programadas para hoy."}
+            </Text>
             <View style={styles.completedBadge}>
-              <Text style={styles.completedBadgeText}>3 de 4 completadas</Text>
+              <Text style={styles.completedBadgeText}>
+                {completedAlarms} de {totalAlarms} completadas
+              </Text>
             </View>
           </View>
           {/* Circular Progress Ring Mock */}
           <View style={styles.progressRingWrapper}>
             <View style={styles.progressRingOuter}>
               <View style={styles.progressRingInner}>
-                <Text style={styles.progressPercentText}>75%</Text>
+                <Text style={styles.progressPercentText}>{progressPercent}%</Text>
               </View>
             </View>
           </View>
@@ -1078,13 +1130,62 @@ export default function AlarmsScreen() {
           );
         })}
 
-        <TouchableOpacity style={styles.completedLink} activeOpacity={0.7}>
-          <Text style={styles.completedLinkText}>Ver tomas completadas (3)</Text>
+        <TouchableOpacity 
+          style={styles.completedLink} 
+          activeOpacity={0.7}
+          onPress={() => setShowCompletedModal(true)}
+        >
+          <Text style={styles.completedLinkText}>Ver tomas completadas ({completedAlarms})</Text>
         </TouchableOpacity>
 
       </ScrollView>
 
 
+
+
+      {/* Modal de Tomas Completadas */}
+      <Modal
+        visible={showCompletedModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowCompletedModal(false)}
+      >
+        <View style={styles.completedModalOverlay}>
+          <View style={styles.completedModalContainer}>
+            <View style={styles.completedModalHeader}>
+              <Text style={styles.completedModalTitle}>Tomas Completadas de Hoy</Text>
+              <TouchableOpacity onPress={() => setShowCompletedModal(false)} style={{ padding: 4 }}>
+                <X color="#191c1e" size={22} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView contentContainerStyle={{ padding: 16 }}>
+              {completedAlarms === 0 ? (
+                <Text style={styles.noCompletedText}>No has completado ninguna toma hoy todavía.</Text>
+              ) : (
+                medications.map(med => {
+                  const takenAlarms = med.alarms ? med.alarms.filter((a: any) => a.status === 'taken') : [];
+                  if (takenAlarms.length === 0) return null;
+
+                  return (
+                    <View key={med.id} style={styles.completedMedGroup}>
+                      <Text style={styles.completedMedName}>{med.name}</Text>
+                      {takenAlarms.map((alarm: any) => (
+                        <View key={alarm.id} style={styles.completedAlarmRow}>
+                          <Check color="#00734c" size={16} style={{ marginRight: 8 }} />
+                          <Text style={styles.completedAlarmText}>
+                            {med.dose} • Programado a las {alarm.time}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  );
+                })
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       {/* Modal de Alarma Full-Screen */}
       <Modal
@@ -1199,6 +1300,14 @@ export default function AlarmsScreen() {
                     placeholderTextColor="#a0a4b0"
                     value={formDose}
                     onChangeText={setFormDose}
+                  />
+                  <View style={styles.fsDivider} />
+                  <TextInput
+                    style={styles.fsInput}
+                    placeholder="Cantidad Prescrita opcional (Ej. 10 tabletas)"
+                    placeholderTextColor="#a0a4b0"
+                    value={formPrescribedQuantity}
+                    onChangeText={setFormPrescribedQuantity}
                   />
                 </View>
               </>
@@ -2334,5 +2443,65 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
+  // Completed Modal Styles
+  completedModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  completedModalContainer: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    width: '90%',
+    maxHeight: '70%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  completedModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#edeef0',
+  },
+  completedModalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#003d9b',
+  },
+  noCompletedText: {
+    textAlign: 'center',
+    color: '#737685',
+    marginVertical: 24,
+    fontSize: 14,
+  },
+  completedMedGroup: {
+    marginBottom: 16,
+  },
+  completedMedName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#191c1e',
+    marginBottom: 8,
+  },
+  completedAlarmRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#82f9be20',
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 6,
+  },
+  completedAlarmText: {
+    fontSize: 13,
+    color: '#00734c',
+    fontWeight: '600',
+  },
 });
+
 

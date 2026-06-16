@@ -1,6 +1,7 @@
 import sqlite3
 import json
 from typing import Optional
+from datetime import datetime
 import config
 from core.entities import Recipe, Patient, Clinic, Doctor, Diagnosis, Medication
 from core.interfaces import IRecipeRepository
@@ -87,6 +88,7 @@ class SQLiteRecipeRepository(IRecipeRepository):
             active BOOLEAN DEFAULT 1,
             alarms_json TEXT,
             history_json TEXT,
+            created_at TEXT,
             FOREIGN KEY (receta_id) REFERENCES recetas(id) ON DELETE CASCADE
         )
         """)
@@ -103,7 +105,8 @@ class SQLiteRecipeRepository(IRecipeRepository):
             ("iconBg", "TEXT"),
             ("active", "BOOLEAN DEFAULT 1"),
             ("alarms_json", "TEXT"),
-            ("history_json", "TEXT")
+            ("history_json", "TEXT"),
+            ("created_at", "TEXT")
         ]
         for col, col_type in meds_columns_to_check:
             try:
@@ -138,9 +141,30 @@ class SQLiteRecipeRepository(IRecipeRepository):
             FOREIGN KEY (receta_id) REFERENCES recetas(id) ON DELETE CASCADE
         )
         """)
+
+        # Tabla usuarios
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS usuarios (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE,
+            password TEXT,
+            fecha_nacimiento TEXT,
+            tipo_sangre TEXT,
+            alergias TEXT,
+            condicion_base TEXT,
+            sexo TEXT
+        )
+        """)
+
+        # Migración: Agregar columna sexo si no existe
+        try:
+            cursor.execute("ALTER TABLE usuarios ADD COLUMN sexo TEXT")
+        except sqlite3.OperationalError:
+            pass # La columna ya existe
         
         conn.commit()
         conn.close()
+
 
     def guardar_receta(self, recipe: Recipe) -> int:
         """Guarda los datos de la receta en SQLite."""
@@ -186,8 +210,9 @@ class SQLiteRecipeRepository(IRecipeRepository):
                     receta_id, nombre, dosis, frecuencia, duracion,
                     brand_name, generic_name, manufacturer_name,
                     indicaciones_fda, advertencias_fda, dosage_fda,
-                    icon, iconBg, active, alarms_json, history_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    icon, iconBg, active, alarms_json, history_json,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     recipe_id,
                     med.nombre,
@@ -204,7 +229,8 @@ class SQLiteRecipeRepository(IRecipeRepository):
                     "#c4d2ff30",
                     1,
                     json.dumps(alarms),
-                    "[]"
+                    "[]",
+                    datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 ))
 
                 
@@ -388,10 +414,13 @@ class SQLiteRecipeRepository(IRecipeRepository):
         cursor = conn.cursor()
         try:
             cursor.execute("""
-            SELECT id, receta_id, nombre, dosis, frecuencia, duracion,
-                   icon, iconBg, active, alarms_json, history_json
-            FROM medicamentos
-            ORDER BY id DESC
+            SELECT m.id, m.receta_id, m.nombre, m.dosis, m.frecuencia, m.duracion,
+                   m.icon, m.iconBg, m.active, m.alarms_json, m.history_json,
+                   m.created_at as med_created_at,
+                   r.fecha_receta, r.created_at as receta_created_at
+            FROM medicamentos m
+            LEFT JOIN recetas r ON m.receta_id = r.id
+            ORDER BY m.id DESC
             """)
             rows = cursor.fetchall()
             meds = []
@@ -406,6 +435,7 @@ class SQLiteRecipeRepository(IRecipeRepository):
                 except Exception:
                     d["history"] = []
                 d["active"] = bool(d.get("active"))
+                d["created_at"] = d.get("med_created_at")
                 d["name"] = d.pop("nombre", "")
                 d["dose"] = d.pop("dosis", "")
                 d["frequency"] = d.pop("frecuencia", "")
@@ -436,6 +466,7 @@ class SQLiteRecipeRepository(IRecipeRepository):
         active = 1 if med.get("active", True) else 0
         alarms_json = json.dumps(med.get("alarms", []))
         history_json = json.dumps(med.get("history", []))
+        created_at = med.get("created_at") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
         try:
             if med_id:
@@ -451,9 +482,10 @@ class SQLiteRecipeRepository(IRecipeRepository):
                 cursor.execute("""
                 INSERT INTO medicamentos (
                     receta_id, nombre, dosis, frecuencia, duracion,
-                    icon, iconBg, active, alarms_json, history_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (receta_id, nombre, dosis, frecuencia, duracion, icon, iconBg, active, alarms_json, history_json))
+                    icon, iconBg, active, alarms_json, history_json,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (receta_id, nombre, dosis, frecuencia, duracion, icon, iconBg, active, alarms_json, history_json, created_at))
                 conn.commit()
                 return cursor.lastrowid
         except Exception as e:
@@ -474,5 +506,59 @@ class SQLiteRecipeRepository(IRecipeRepository):
             raise e
         finally:
             conn.close()
+
+    def obtener_perfil_usuario(self) -> Optional[dict]:
+        """Obtiene el primer usuario registrado en la base de datos (perfil activo)."""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT id, username, password, fecha_nacimiento, tipo_sangre, alergias, condicion_base, sexo FROM usuarios LIMIT 1")
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        except Exception as e:
+            print(f"Error al obtener perfil de usuario: {e}")
+            return None
+        finally:
+            conn.close()
+
+    def guardar_o_actualizar_perfil_usuario(self, datos: dict) -> int:
+        """Guarda o actualiza el perfil del usuario."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        username = datos.get("username")
+        password = datos.get("password")
+        fecha_nacimiento = datos.get("fecha_nacimiento")
+        tipo_sangre = datos.get("tipo_sangre")
+        alergias = datos.get("alergias")
+        condicion_base = datos.get("condicion_base")
+        sexo = datos.get("sexo")
+        
+        try:
+            # Comprobar si ya existe algún usuario
+            cursor.execute("SELECT id FROM usuarios LIMIT 1")
+            row = cursor.fetchone()
+            if row:
+                user_id = row[0]
+                cursor.execute("""
+                UPDATE usuarios
+                SET username = ?, password = ?, fecha_nacimiento = ?, tipo_sangre = ?, alergias = ?, condicion_base = ?, sexo = ?
+                WHERE id = ?
+                """, (username, password, fecha_nacimiento, tipo_sangre, alergias, condicion_base, sexo, user_id))
+                conn.commit()
+                return user_id
+            else:
+                cursor.execute("""
+                INSERT INTO usuarios (username, password, fecha_nacimiento, tipo_sangre, alergias, condicion_base, sexo)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (username, password, fecha_nacimiento, tipo_sangre, alergias, condicion_base, sexo))
+                conn.commit()
+                return cursor.lastrowid
+        except Exception as e:
+            conn.rollback()
+            raise e
+        finally:
+            conn.close()
+
 
 
