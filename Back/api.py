@@ -294,10 +294,25 @@ async def get_nearby_hospitals(lat: float, lng: float, radius: float = 5000):
     }
 
 
+@app.get("/api/chat/history", dependencies=[Depends(verify_api_key)])
+async def get_chat_history():
+    try:
+        history = repository.obtener_historial_chat()
+        return {"history": history}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/chat/history", dependencies=[Depends(verify_api_key)])
+async def clear_chat_history():
+    try:
+        repository.vaciar_historial_chat()
+        return {"status": "success", "message": "Historial de chat vaciado"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/chat", dependencies=[Depends(verify_api_key)])
 async def chat(request: dict):
     message = request.get("message")
-    history = request.get("history", [])
     if not message:
         raise HTTPException(status_code=400, detail="El mensaje no puede estar vacío")
         
@@ -305,9 +320,12 @@ async def chat(request: dict):
         from infrastructure.clients.api_clients import get_groq_client
         client = get_groq_client()
         
+        # Obtener historial desde la base de datos
+        db_history = repository.obtener_historial_chat()
+        
         # Determinar si es el inicio de la conversación (sin mensajes previos del usuario en el historial)
         is_initial_stage = True
-        for msg in history:
+        for msg in db_history:
             if msg.get("role") == "user":
                 is_initial_stage = False
                 break
@@ -338,8 +356,8 @@ async def chat(request: dict):
         
         messages = [{"role": "system", "content": system_instruction}]
         
-        # Cargar historial
-        for msg in history:
+        # Cargar historial de la base de datos
+        for msg in db_history:
             messages.append({
                 "role": msg.get("role", "user"),
                 "content": msg.get("content", "")
@@ -356,6 +374,11 @@ async def chat(request: dict):
         )
         
         reply = response.choices[0].message.content.strip()
+        
+        # Persistir los mensajes en la base de datos
+        repository.guardar_mensaje_chat("user", message)
+        repository.guardar_mensaje_chat("assistant", reply)
+        
         return {"reply": reply}
     except Exception as e:
         import traceback

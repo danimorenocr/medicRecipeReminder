@@ -165,6 +165,16 @@ class SQLiteRecipeRepository(IRecipeRepository):
             cursor.execute("ALTER TABLE usuarios ADD COLUMN sexo TEXT")
         except sqlite3.OperationalError:
             pass # La columna ya existe
+
+        # Tabla historial mensajes_chat (App Móvil)
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS mensajes_chat (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            role TEXT,
+            content TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
         
         conn.commit()
         conn.close()
@@ -574,6 +584,44 @@ class SQLiteRecipeRepository(IRecipeRepository):
         except Exception as e:
             conn.rollback()
             raise e
+        finally:
+            conn.close()
+
+    def obtener_historial_chat(self) -> list:
+        """Obtiene el historial completo de mensajes del chat de la app móvil."""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT role, content, created_at FROM mensajes_chat ORDER BY id ASC")
+            return [dict(r) for r in cursor.fetchall()]
+        except Exception as e:
+            print(f"Error al obtener historial de chat: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def guardar_mensaje_chat(self, role: str, content: str) -> None:
+        """Guarda un mensaje del chat (usuario o asistente) en la base de datos."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        try:
+            cursor.execute("INSERT INTO mensajes_chat (role, content) VALUES (?, ?)", (role, content))
+            conn.commit()
+        except Exception as e:
+            print(f"Error al guardar mensaje de chat: {e}")
+        finally:
+            conn.close()
+
+    def vaciar_historial_chat(self) -> None:
+        """Elimina todos los mensajes del historial de chat."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM mensajes_chat")
+            conn.commit()
+        except Exception as e:
+            print(f"Error al vaciar historial de chat: {e}")
         finally:
             conn.close()
 

@@ -37,7 +37,7 @@ El ecosistema está construido siguiendo principios de **Clean Architecture** (A
                                       ▼ (Peticiones HTTP Rest / JSON)
 ┌─────────────────────────────────────────────────────────────────────────────────────────┐
 │                                 API FASTAPI (api.py)                                    │
-│ - Endpoints de consulta y almacenamiento (/api/profile, /api/medications, /api/recipes).│
+│ - Endpoints de base (/api/profile, /api/medications, /api/recipes, /api/chat/history).  │
 │ - Canalización del procesamiento de imágenes (/api/recipes/process).                     │
 │ - Endpoint del Asistente Virtual (/api/chat).                                           │
 └─────────────────────────────────────┬───────────────────────────────────────────────────┘
@@ -105,6 +105,7 @@ El bot de Telegram (`telegram_bot.py`) actúa como un punto de entrada alternati
   - *Reflujo / Gastritis* ➔ Ácido estomacal fuerte como cloro de piscina o compuerta esofágica desajustada como puerta vieja.
   - *Espasmo muscular* ➔ Fibras del músculo trenzadas como un nudo de corbata o cables enredados.
 * **Filtros de Alarma ("Red Flags")**: Evalúa constantemente síntomas críticos (dificultad respiratoria, dolor opresivo de pecho, sangrado, pérdida de fuerza o conciencia, fiebre extremadamente alta). Si los detecta, detiene el interrogatorio clínico de inmediato e indica al usuario acudir a emergencias con prioridad.
+* **Historial de Chat Persistente con Contexto**: Las conversaciones se almacenan en SQLite (`mensajes_chat`) y el backend recupera automáticamente los mensajes previos para adjuntarlos como contexto conversacional al LLM (Groq). Incluye un botón para vaciar el historial directamente desde la interfaz de la app.
 
 ### 6. Localizador de Urgencias y Hospitales 24h
 * **Integración con Google Places API**: Posee un endpoint proxy seguro (`GET /api/hospitals/nearby`) que consulta en tiempo real los centros médicos disponibles con la palabra clave `urgencias` (reforzando que sean servicios 24h humanos y no veterinarias o laboratorios clínicos).
@@ -152,6 +153,13 @@ Almacena el detalle de los fármacos.
 ### `usuarios`
 * `id` (INTEGER PRIMARY KEY)
 * `username`, `password`, `fecha_nacimiento`, `tipo_sangre`, `alergias`, `condicion_base`, `sexo` (TEXT)
+
+### `mensajes_chat`
+Historial de conversación de la app móvil con Alicia.
+* `id` (INTEGER PRIMARY KEY AUTOINCREMENT)
+* `role` (TEXT - 'user' o 'assistant')
+* `content` (TEXT)
+* `created_at` (TIMESTAMP)
 
 ---
 
