@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Switch, StatusBar, Modal, TextInput, useWindowDimensions, Platform } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Switch, StatusBar, Modal, TextInput, useWindowDimensions, Platform, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Bell, Wifi, ArrowRight, Plus, X, Check, Calendar, Clock, Minus, Pill, Droplet, Activity, Coffee, Heart, Syringe, Thermometer, FlaskConical, Trash2 } from 'lucide-react-native';
@@ -10,7 +10,7 @@ import AlarmTriggerOverlay from '../components/alarm-trigger-overlay';
 import * as Notifications from 'expo-notifications';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
-import { API_URL } from '../constants/api';
+import { API_URL, API_KEY } from '../constants/api';
 import { Alert, ActivityIndicator } from 'react-native';
 
 // Dynamically require Notifee to prevent crashing in Expo Go
@@ -72,7 +72,9 @@ export default function AlarmsScreen() {
   const fetchMedications = async () => {
     try {
       console.log("[fetchMedications] Fetching from:", `${API_URL}/api/medications`);
-      const response = await fetch(`${API_URL}/api/medications`);
+      const response = await fetch(`${API_URL}/api/medications`, {
+        headers: { 'X-API-KEY': API_KEY }
+      });
       if (response.ok) {
         const data = await response.json();
         setMedications(data);
@@ -91,6 +93,7 @@ export default function AlarmsScreen() {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          'X-API-KEY': API_KEY,
         },
         body: JSON.stringify(updatedMed),
       });
@@ -146,7 +149,8 @@ export default function AlarmsScreen() {
       const deleteFromDB = async () => {
         try {
           const response = await fetch(`${API_URL}/api/medications/${medId}`, {
-            method: 'DELETE'
+            method: 'DELETE',
+            headers: { 'X-API-KEY': API_KEY }
           });
           if (response.ok) {
             setMedications(prev => prev.filter(m => m.id !== medId));
@@ -697,6 +701,7 @@ export default function AlarmsScreen() {
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'multipart/form-data',
+          'X-API-KEY': API_KEY,
         },
       });
 
@@ -816,6 +821,7 @@ export default function AlarmsScreen() {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'X-API-KEY': API_KEY,
           },
           body: JSON.stringify(newMed),
         });
@@ -867,7 +873,10 @@ export default function AlarmsScreen() {
           onPress: async () => {
             try {
               const response = await fetch(`${API_URL}/api/medications/${medId}`, {
-                method: 'DELETE'
+                method: 'DELETE',
+                headers: {
+                  'X-API-KEY': API_KEY
+                }
               });
               if (response.ok) {
                 setMedications(prev => prev.filter(m => m.id !== medId));
@@ -984,12 +993,13 @@ export default function AlarmsScreen() {
       {/* Header matching screenshot */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <View style={styles.doctorAvatar}>
-            <Text style={styles.doctorAvatarText}>👨‍⚕️</Text>
-          </View>
-          <Text style={styles.headerTitle}>MediAssist AI</Text>
+          <Image 
+            source={require('../../assets/images/icon.png')} 
+            style={{ width: 32, height: 32, borderRadius: 8, marginRight: 10 }} 
+            resizeMode="contain"
+          />
+          <Text style={styles.headerTitle}>Alicia AI</Text>
         </View>
-        <Wifi color="#191c1e" size={20} />
       </View>
 
       <ScrollView 

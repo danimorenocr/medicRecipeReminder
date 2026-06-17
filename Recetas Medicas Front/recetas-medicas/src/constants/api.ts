@@ -14,4 +14,5 @@ const getApiUrl = (): string => {
 };
 
 export const API_URL = getApiUrl();
+export const API_KEY = 'dev-secret-api-key-9988';
 console.log('[API_URL] Configurada en:', API_URL);

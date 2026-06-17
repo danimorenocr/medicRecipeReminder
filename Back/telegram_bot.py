@@ -4,11 +4,16 @@ import httpx
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
 import config
 from infrastructure.database.sqlite_repository import SQLiteRecipeRepository
 
 # Inicializar componentes locales
 repository = SQLiteRecipeRepository()
+API_KEY = os.getenv("API_KEY", "dev-secret-api-key-9988")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Manejador del comando /start."""
@@ -17,7 +22,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     repository.registrar_mensaje(chat_id, message_id, 'comando', '/start')
     
     await update.message.reply_text(
-        "👋 ¡Hola! Soy August, tu asistente inteligente de salud.\n\n"
+        "👋 ¡Hola! Soy Alicia, tu asistente inteligente de salud.\n\n"
         "Envíame una foto de tu receta u orden médica. Extraeré los datos estructurados, "
         "consultaré el diagnóstico oficial CIE-10 y te explicaré de forma sencilla y en "
         "lenguaje cotidiano para qué sirve cada medicamento y qué significa para ti."
@@ -49,8 +54,9 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 'message_id': str(message_id),
                 'file_id': file_id
             }
+            headers = {"X-API-Key": API_KEY}
             # Cambia la URL si la API corre en otro host/puerto
-            response = await client.post("http://localhost:8000/api/recipes/process", files=files, data=data)
+            response = await client.post("http://localhost:8000/api/recipes/process", files=files, data=data, headers=headers)
             response.raise_for_status()
             res_json = response.json()
             
@@ -294,7 +300,7 @@ def main():
     # Restaurar recordatorios al arrancar
     restaurar_recordatorios(app)
     
-    print("Bot August iniciado y escuchando...")
+    print("Bot Alicia AI iniciado y escuchando...")
     app.run_polling()
 
 if __name__ == "__main__":

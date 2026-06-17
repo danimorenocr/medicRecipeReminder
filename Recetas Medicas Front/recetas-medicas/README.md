@@ -1,6 +1,16 @@
-# Welcome to your Expo app 👋
+# Alicia AI - Aplicación Móvil (React Native + Expo)
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+<p align="center">
+  <img src="assets/images/icon.png" width="150" alt="Alicia AI Logo" style="border-radius: 28px;" />
+</p>
+
+<p align="center">
+  <b>Alicia AI</b> (también conocido como **Recetas Claras**) es la aplicación móvil premium escrita en React Native + Expo para gestionar tus recetas médicas de forma inteligente.
+</p>
+
+<p align="center">
+  <img src="assets/images/alicia_ai_preview.jpg" width="100%" alt="Alicia AI Preview" style="border-radius: 16px;" />
+</p>
 
 ## Get started
 

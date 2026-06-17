@@ -1,6 +1,16 @@
-# MediaAssist AI (Recetas Claras) - Asistente de Salud Inteligente Completo
+# Alicia AI - Asistente de Salud Inteligente Completo
 
-MediaAssist AI (también conocido como **Recetas Claras**) es un ecosistema de salud inteligente diseñado para simplificar la gestión y el seguimiento de tratamientos médicos. Permite a los usuarios digitalizar recetas u órdenes médicas en formato físico (imágenes) mediante Inteligencia Artificial, entender su diagnóstico en lenguaje sencillo, programar alarmas de toma de medicamentos y chatear con un asistente de salud empático.
+<p align="center">
+  <img src="Recetas%20Medicas%20Front/recetas-medicas/assets/images/icon.png" width="150" alt="Alicia AI Logo" style="border-radius: 28px;" />
+</p>
+
+<p align="center">
+  <b>Alicia AI</b> (también conocido como <b>Recetas Claras</b>) es un ecosistema de salud inteligente diseñado para simplificar la gestión y el seguimiento de tratamientos médicos. Permite a los usuarios digitalizar recetas u órdenes médicas en formato físico (imágenes) mediante Inteligencia Artificial, entender su diagnóstico en lenguaje sencillo, programar alarmas de toma de medicamentos y chatear con un asistente de salud empático.
+</p>
+
+<p align="center">
+  <img src="Recetas%20Medicas%20Front/recetas-medicas/assets/images/alicia_ai_preview.jpg" width="100%" alt="Alicia AI Preview" style="border-radius: 16px;" />
+</p>
 
 El proyecto está compuesto por:
 1. **Back (Backend API + Bot de Telegram):** Escrito en Python (FastAPI, SQLite, Telegram Bot API, Gemini 2.5 Flash, Llama 3.3).
@@ -65,7 +75,7 @@ El bot de Telegram (`telegram_bot.py`) actúa como un punto de entrada alternati
 * **Lector Óptico de Recetas:** Utiliza `gemini-2.5-flash` con esquemas de respuesta estrictos en formato JSON para obtener paciente, clínica, médico, diagnóstico y medicamentos (nombre, dosis, frecuencia, duración).
 * **Traductor de Diagnósticos (CIE-10):** Consulta la base de datos de la OMS (ICD-10) para encontrar el código oficial de la enfermedad.
 * **Explicador de Medicamentos:** Usa Groq con `llama-3.3-70b-versatile` para generar una guía comprensible, respondiendo preguntas clave como: *¿Para qué sirve este medicamento?*, *¿Cómo me ayuda?* y *¿Qué precauciones debo tener?*.
-* **Vínculo Oficial OpenFDA:** Extrae indicaciones, advertencias y dosificación técnica consultando la API oficial de la FDA de Estados Unidos.
+* **Vínculo Oficial OpenFDA:** Consulta advertencias utilizando el principio activo traducido automáticamente por Gemini (ej: Ibuprofen o Acetaminophen), garantizando compatibilidad entre las recetas colombianas y la base de datos de EE. UU.
 
 ### 2. Agenda y Plan de Medicación (Frontend Dashboard)
 * **Agenda Multi-Día Interactiva:** Barra de acceso rápido para **Hoy**, **Mañana** y **Pasado Mañana**, además de un botón de calendario para abrir un selector de fecha en **cualquier día**.
@@ -112,7 +122,7 @@ El bot de Telegram (`telegram_bot.py`) actúa como un punto de entrada alternati
 
 ## 🗃️ Esquema de la Base de Datos (`recetas.db`)
 
-La persistencia de datos utiliza SQLite. El esquema consta de las siguientes tablas principales:
+La persistencia de datos utiliza SQLite, configurada en **Modo WAL** (Write-Ahead Logging) para permitir la concurrencia simultánea entre las peticiones de la App Móvil y los hilos de recordatorios del Bot de Telegram. El esquema consta de las siguientes tablas principales:
 
 ### `recetas`
 Almacena las cabeceras de los diagnósticos y doctores.
@@ -142,6 +152,14 @@ Almacena el detalle de los fármacos.
 ### `usuarios`
 * `id` (INTEGER PRIMARY KEY)
 * `username`, `password`, `fecha_nacimiento`, `tipo_sangre`, `alergias`, `condicion_base`, `sexo` (TEXT)
+
+---
+
+## 🔐 Seguridad y Autenticación
+
+Para proteger los datos de salud sensibles de los usuarios en entornos de demostración y producción (ideal para presentar en LinkedIn), la arquitectura contempla la protección de endpoints y el resguardo de información:
+* **Autenticación por API Key (Mock Auth)**: Las llamadas desde la aplicación móvil React Native a los endpoints sensibles (`/api/profile`, `/api/recipes`, etc.) viajan firmadas con cabeceras `X-API-KEY` y son validadas por un middleware de autenticación en FastAPI para evitar accesos no autorizados.
+* **Cifrado de Datos en Reposo**: La información personal y médica del usuario y del paciente es automáticamente encriptada en la base de datos local SQLite utilizando `Fernet` (cifrado simétrico robusto bajo el estándar AES-128).
 
 ---
 

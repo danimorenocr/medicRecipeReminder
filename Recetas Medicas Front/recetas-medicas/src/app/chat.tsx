@@ -3,7 +3,7 @@ import { StyleSheet, Text, View, ScrollView, TextInput, TouchableOpacity, Keyboa
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Wifi, ArrowLeft, ArrowRight, MessageSquare, Camera, Mic, Send, FileText, Check } from 'lucide-react-native';
-import { API_URL } from '../constants/api';
+import { API_URL, API_KEY } from '../constants/api';
 
 const renderMarkdown = (text: string, defaultColor: string = '#333333') => {
   if (!text) return null;
@@ -61,7 +61,7 @@ export default function ChatScreen() {
     {
       id: '1',
       role: 'assistant',
-      content: 'Hola, soy tu asistente de MediAssist. Estoy aquí para ayudarte a entender tus recetas médicas, resolver dudas sobre tus medicamentos o responder preguntas generales de salud. ¿Qué deseas consultar hoy?',
+      content: 'Hola, soy tu asistente Alicia. Estoy aquí para ayudarte a entender tus recetas médicas, resolver dudas sobre tus medicamentos o responder preguntas generales de salud. ¿Qué deseas consultar hoy?',
       time: '09:00 AM'
     }
   ]);
@@ -101,11 +101,11 @@ export default function ChatScreen() {
         role: m.role,
         content: m.content
       }));
-
       const response = await fetch(`${API_URL}/api/chat`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'X-API-KEY': API_KEY,
         },
         body: JSON.stringify({
           message: textToSend.trim(),
@@ -132,7 +132,7 @@ export default function ChatScreen() {
       const errorMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant' as const,
-        content: 'Hubo un error de conexión con el asistente August. Asegúrate de que el backend esté ejecutándose.',
+        content: 'Hubo un error de conexión con el asistente Alicia. Asegúrate de que el backend esté ejecutándose.',
         time: formatTime()
       };
       setMessages(prev => [...prev, errorMessage]);
@@ -156,11 +156,11 @@ export default function ChatScreen() {
             <ArrowLeft color="#191c1e" size={24} />
           </TouchableOpacity>
           <Image 
-            source={require('@/assets/images/icon.png')} 
-            style={{ width: 28, height: 28, borderRadius: 6, marginRight: 2 }} 
+            source={require('../../assets/images/alicia_attentive.png')} 
+            style={{ width: 32, height: 32, borderRadius: 16, marginRight: 2 }} 
           />
           <View style={{ marginLeft: 8 }}>
-            <Text style={styles.headerTitle}>MediAssist AI</Text>
+            <Text style={styles.headerTitle}>Alicia</Text>
             <View style={styles.statusRow}>
               <View style={styles.statusDot} />
               <Text style={styles.statusText}>En línea</Text>
@@ -179,9 +179,10 @@ export default function ChatScreen() {
         >
           {/* Asistente Inteligente Top Block */}
           <View style={styles.assistantIntro}>
-            <View style={styles.introIconWrapper}>
-              <FileText color="#003d9b" size={24} />
-            </View>
+            <Image 
+              source={require('../../assets/images/alicia_attentive.png')} 
+              style={{ width: 80, height: 80, borderRadius: 16, marginBottom: 12 }} 
+            />
             <Text style={styles.introTitle}>Asistente Inteligente</Text>
             <Text style={styles.introSubtitle}>
               Tu historial está encriptado y solo tú puedes verlo. ¿En qué puedo ayudarte hoy?
@@ -223,9 +224,12 @@ export default function ChatScreen() {
 
           {sending && (
             <View style={[styles.botMessageRow, { alignItems: 'center', opacity: 0.8 }]}>
-              <View style={[styles.botBubble, { flexDirection: 'row', alignItems: 'center', gap: 8 }]}>
-                <ActivityIndicator size="small" color="#003d9b" />
-                <Text style={[styles.msgText, { fontStyle: 'italic', color: '#737685' }]}>Tu asistente está escribiendo...</Text>
+              <View style={[styles.botBubble, { flexDirection: 'row', alignItems: 'center', gap: 10 }]}>
+                <Image 
+                  source={require('../../assets/images/alicia_thinking.png')} 
+                  style={{ width: 28, height: 28, borderRadius: 6 }} 
+                />
+                <Text style={[styles.msgText, { fontStyle: 'italic', color: '#737685' }]}>Alicia está pensando...</Text>
               </View>
             </View>
           )}
@@ -256,7 +260,7 @@ export default function ChatScreen() {
             
             <TextInput 
               style={styles.textInput} 
-              placeholder="Pregúntale a MediAssist..."
+              placeholder="Pregúntale a Alicia..."
               value={inputText}
               onChangeText={setInputText}
               placeholderTextColor="#737685"

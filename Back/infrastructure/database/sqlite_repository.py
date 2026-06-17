@@ -5,6 +5,7 @@ from datetime import datetime
 import config
 from core.entities import Recipe, Patient, Clinic, Doctor, Diagnosis, Medication
 from core.interfaces import IRecipeRepository
+from infrastructure.services.encryption_service import encrypt_data, decrypt_data
 
 def parse_frecuencia_alarms(frecuencia: str) -> list:
     f = (frecuencia or "").lower()
@@ -29,6 +30,9 @@ class SQLiteRecipeRepository(IRecipeRepository):
         """Inicializa las tablas de la base de datos si no existen."""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
+        
+        # Habilitar modo WAL para permitir lectura y escritura concurrentes
+        cursor.execute("PRAGMA journal_mode=WAL;")
         
         # Tabla recetas
         cursor.execute("""
@@ -183,10 +187,10 @@ class SQLiteRecipeRepository(IRecipeRepository):
                 explicacion
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
-                recipe.paciente.nombre_completo,
-                recipe.paciente.fecha_nacimiento,
-                recipe.paciente.cedula,
-                recipe.paciente.telefono,
+                encrypt_data(recipe.paciente.nombre_completo),
+                encrypt_data(recipe.paciente.fecha_nacimiento),
+                encrypt_data(recipe.paciente.cedula),
+                encrypt_data(recipe.paciente.telefono),
                 recipe.clinica.nombre,
                 recipe.clinica.direccion,
                 recipe.medico.nombre,
@@ -399,6 +403,10 @@ class SQLiteRecipeRepository(IRecipeRepository):
             """)
             recetas = [dict(r) for r in cursor.fetchall()]
             for r in recetas:
+                r["paciente_nombre"] = decrypt_data(r.get("paciente_nombre"))
+                r["paciente_fecha_nacimiento"] = decrypt_data(r.get("paciente_fecha_nacimiento"))
+                r["paciente_cedula"] = decrypt_data(r.get("paciente_cedula"))
+                r["paciente_telefono"] = decrypt_data(r.get("paciente_telefono"))
                 r["medicamentos"] = self.obtener_medicamentos_por_receta(r["id"])
             return recetas
         except Exception as e:
@@ -515,7 +523,16 @@ class SQLiteRecipeRepository(IRecipeRepository):
         try:
             cursor.execute("SELECT id, username, password, fecha_nacimiento, tipo_sangre, alergias, condicion_base, sexo FROM usuarios LIMIT 1")
             row = cursor.fetchone()
-            return dict(row) if row else None
+            if row:
+                d = dict(row)
+                d["password"] = decrypt_data(d.get("password"))
+                d["fecha_nacimiento"] = decrypt_data(d.get("fecha_nacimiento"))
+                d["tipo_sangre"] = decrypt_data(d.get("tipo_sangre"))
+                d["alergias"] = decrypt_data(d.get("alergias"))
+                d["condicion_base"] = decrypt_data(d.get("condicion_base"))
+                d["sexo"] = decrypt_data(d.get("sexo"))
+                return d
+            return None
         except Exception as e:
             print(f"Error al obtener perfil de usuario: {e}")
             return None
@@ -527,12 +544,12 @@ class SQLiteRecipeRepository(IRecipeRepository):
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         username = datos.get("username")
-        password = datos.get("password")
-        fecha_nacimiento = datos.get("fecha_nacimiento")
-        tipo_sangre = datos.get("tipo_sangre")
-        alergias = datos.get("alergias")
-        condicion_base = datos.get("condicion_base")
-        sexo = datos.get("sexo")
+        password = encrypt_data(datos.get("password"))
+        fecha_nacimiento = encrypt_data(datos.get("fecha_nacimiento"))
+        tipo_sangre = encrypt_data(datos.get("tipo_sangre"))
+        alergias = encrypt_data(datos.get("alergias") if isinstance(datos.get("alergias"), str) else json.dumps(datos.get("alergias")))
+        condicion_base = encrypt_data(datos.get("condicion_base"))
+        sexo = encrypt_data(datos.get("sexo"))
         
         try:
             # Comprobar si ya existe algún usuario

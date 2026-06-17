@@ -439,7 +439,7 @@ export default function TabLayout() {
             {/* Títulos y Subtítulos */}
             <View style={styles.textContainer}>
               <Animated.View style={{ transform: [{ translateY: textTranslateY }], opacity: textOpacity }}>
-                <Text style={styles.splashTitle}>MediaAssist AI</Text>
+                <Text style={styles.splashTitle}>Alicia AI</Text>
               </Animated.View>
               <Animated.View style={{ transform: [{ translateY: subTextTranslateY }], opacity: subTextOpacity }}>
                 <Text style={styles.splashSubtitle}>Tu asistente de salud inteligente</Text>
