@@ -88,6 +88,13 @@ Almacena cada uno de los medicamentos prescritos en la receta correspondiente.
 - `frecuencia` (TEXT)
 - `duracion` (TEXT)
 
+### 3. Tabla `mensajes_chat` (Historial Chat App Móvil)
+Almacena el historial conversacional con el asistente médico Alicia.
+- `id` (INTEGER PRIMARY KEY AUTOINCREMENT)
+- `role` (TEXT - 'user' o 'assistant')
+- `content` (TEXT)
+- `created_at` (TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
+
 ---
 
 ## 🛠️ Requisitos de Instalación

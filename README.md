@@ -56,7 +56,7 @@ El ecosistema está construido siguiendo principios de **Clean Architecture** (A
                                       ▼ (Base de Datos Local)
 ┌─────────────────────────────────────────────────────────────────────────────────────────┐
 │                              BASE DE DATOS SQLITE (recetas.db)                         │
-│ - Tablas: recetas, medicamentos, usuarios, recordatorios, mensajes_telegram.            │
+│ - Tablas: recetas, medicamentos, usuarios, recordatorios, msgs_telegram, msgs_chat.     │
 └─────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
