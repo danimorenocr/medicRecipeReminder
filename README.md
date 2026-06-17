@@ -75,7 +75,6 @@ El bot de Telegram (`telegram_bot.py`) actúa como un punto de entrada alternati
 
 ### 3. Gestor de Alarmas y Notificaciones
 * **Cálculo de Dosis y Duración:** Al ingresar un medicamento, puedes escribir la **Cantidad Prescrita** (ej. 10 tabletas) y el sistema calculará automáticamente cuántos días dura el tratamiento en base a la dosis y frecuencia (ej. 1 tableta cada 12 horas = 5 días de duración).
-* **Anillo de Progreso:** Muestra en tiempo real el porcentaje completado de las tomas del día.
 * **Modal de Tomas Completadas:** Detalla las horas y nombres de los medicamentos tomados hoy.
 * **Notificaciones Locales (Background/Foreground):** Integra notificaciones nativas en el móvil a las horas exactas de tus alarmas.
 

@@ -148,8 +148,12 @@ export default function ChatScreen() {
       {/* Header matching screenshot */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <TouchableOpacity onPress={() => router.push('/')} style={{ marginRight: 8, padding: 4 }}>
-            <ArrowLeft color="#191c1e" size={22} />
+          <TouchableOpacity 
+            onPress={() => router.push('/')} 
+            style={{ marginRight: 8, padding: 12, marginLeft: -12, justifyContent: 'center', alignItems: 'center' }}
+            hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+          >
+            <ArrowLeft color="#191c1e" size={24} />
           </TouchableOpacity>
           <Image 
             source={require('@/assets/images/icon.png')} 

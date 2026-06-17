@@ -327,7 +327,7 @@ export default function ProfileScreen() {
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <View style={styles.doctorAvatar}>
-            <Text style={styles.doctorAvatarText}>👩‍⚕️</Text>
+            <HeartPulse color="#0052cc" size={18} />
           </View>
           <Text style={styles.headerTitle}>MediAssist AI</Text>
         </View>
@@ -343,9 +343,7 @@ export default function ProfileScreen() {
         <View style={styles.profileInfoSection}>
           <View style={styles.avatarBigWrapper}>
             <View style={styles.avatarBig}>
-              <Text style={styles.avatarBigText}>
-                {profile.sexo === 'Femenino' ? '👩' : profile.sexo === 'Masculino' ? '👨' : '👤'}
-              </Text>
+              <UserIcon color="#0052cc" size={38} />
             </View>
             <TouchableOpacity 
               style={styles.editBtn} 
@@ -364,14 +362,14 @@ export default function ProfileScreen() {
               <Text style={styles.badgeText}>{profile.edad} años</Text>
             </View>
             <View style={styles.badge}>
-              <Heart size={12} color="#003d9b" style={{ marginRight: 4 }} />
+              <Heart size={12} color="#0052cc" style={{ marginRight: 4 }} />
               <Text style={styles.badgeText}>{profile.tipo_sangre}</Text>
             </View>
             <View style={styles.badge}>
               <Text style={styles.badgeText}>{profile.sexo || 'Femenino'}</Text>
             </View>
-            <View style={[styles.badge, { backgroundColor: '#82f9be' }]}>
-              <Text style={[styles.badgeText, { color: '#00734c', fontWeight: '700' }]}>✓ Asegurado</Text>
+            <View style={[styles.badge, { backgroundColor: '#e1f7ec' }]}>
+              <Text style={[styles.badgeText, { color: '#00a86b', fontWeight: '700' }]}>✓ Asegurado</Text>
             </View>
           </View>
 
@@ -414,10 +412,10 @@ export default function ProfileScreen() {
         {/* Condiciones Crónicas Card */}
         <View style={styles.whiteCard}>
           <View style={styles.cardHeaderRow}>
-            <Text style={{ fontSize: 18 }}>📝</Text>
+            <Award color="#0052cc" size={20} />
             <Text style={styles.cardTitle}>Condiciones Crónicas</Text>
             <TouchableOpacity style={styles.plusIconWrapper} onPress={() => setIsEditing(true)}>
-              <Plus color="#003d9b" size={20} />
+              <Plus color="#0052cc" size={20} />
             </TouchableOpacity>
           </View>
 
@@ -425,14 +423,14 @@ export default function ProfileScreen() {
             conditionList.map((cond, index) => (
               <View key={index} style={styles.conditionRow}>
                 <View style={styles.conditionIconBg}>
-                  <Text style={{ fontSize: 16 }}>📋</Text>
+                  <FileText color="#0052cc" size={16} />
                 </View>
                 <View style={{ flex: 1, marginLeft: 12 }}>
                   <Text style={styles.conditionName}>{cond}</Text>
                   <Text style={styles.conditionDate}>Condición de base activa</Text>
                 </View>
-                <View style={[styles.statusBadge, { backgroundColor: '#82f9be30' }]}>
-                  <Text style={[styles.statusBadgeText, { color: '#00734c' }]}>ESTABLE</Text>
+                <View style={[styles.statusBadge, { backgroundColor: '#e1f7ec' }]}>
+                  <Text style={[styles.statusBadgeText, { color: '#00a86b' }]}>ESTABLE</Text>
                 </View>
               </View>
             ))
@@ -444,14 +442,14 @@ export default function ProfileScreen() {
         {/* Contactos de Emergencia Card */}
         <View style={styles.whiteCard}>
           <View style={styles.cardHeaderRow}>
-            <Text style={{ fontSize: 18 }}>📇</Text>
+            <Phone color="#0052cc" size={20} />
             <Text style={styles.cardTitle}>Contactos de Emergencia</Text>
           </View>
 
           {/* Contact 1 - Doctor */}
           <View style={styles.contactRow}>
             <View style={styles.contactAvatar}>
-              <Text style={{ fontSize: 16 }}>👩‍⚕️</Text>
+              <HeartPulse color="#0052cc" size={18} />
             </View>
             <View style={{ flex: 1, marginLeft: 12 }}>
               <Text style={styles.contactName}>
@@ -462,14 +460,14 @@ export default function ProfileScreen() {
               </Text>
             </View>
             <TouchableOpacity style={styles.phoneBtn} activeOpacity={0.7}>
-              <Phone color="#00734c" size={16} />
+              <Phone color="#00a86b" size={16} />
             </TouchableOpacity>
           </View>
 
           {/* Contact 2 - Clínica */}
           <View style={styles.contactRow}>
             <View style={styles.contactAvatar}>
-              <Text style={{ fontSize: 16 }}>🏥</Text>
+              <Award color="#0052cc" size={18} />
             </View>
             <View style={{ flex: 1, marginLeft: 12 }}>
               <Text style={styles.contactName}>
@@ -479,8 +477,8 @@ export default function ProfileScreen() {
                 {lastRecipe ? lastRecipe.clinica_direccion : 'Cardiólogo Personal'}
               </Text>
             </View>
-            <TouchableOpacity style={[styles.phoneBtn, { backgroundColor: '#82f9be30' }]} activeOpacity={0.7}>
-              <Text style={{ fontSize: 14 }}>🏥</Text>
+            <TouchableOpacity style={[styles.phoneBtn, { backgroundColor: '#e1f7ec' }]} activeOpacity={0.7}>
+              <Phone color="#00a86b" size={16} />
             </TouchableOpacity>
           </View>
         </View>
@@ -492,7 +490,7 @@ export default function ProfileScreen() {
         >
           <View style={styles.urgenciasHeaderRow}>
             <View style={styles.urgenciasIconBg}>
-              <Text style={{ fontSize: 20 }}>🚨</Text>
+              <ShieldAlert color="#ba1a1a" size={22} />
             </View>
             <View style={{ flex: 1, marginLeft: 12 }}>
               <Text style={styles.urgenciasTitle}>Urgencias y Hospitales 24h</Text>
@@ -568,15 +566,12 @@ const styles = StyleSheet.create({
   avatarBig: {
     width: 90,
     height: 90,
-    borderRadius: 20,
-    backgroundColor: '#e1e2e4',
+    borderRadius: 45, // Circular avatar
+    backgroundColor: '#f0f4fc',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#edeef0',
-  },
-  avatarBigText: {
-    fontSize: 48,
   },
   editBtn: {
     position: 'absolute',

@@ -309,41 +309,45 @@ export default function SummaryScreen() {
         </TouchableOpacity>
 
         {/* Quick Actions Grid */}
-        <View style={styles.gridContainer}>
-          <TouchableOpacity style={styles.gridItemCard} onPress={() => router.push('/scan')}>
-            <View style={[styles.gridIconBg, { backgroundColor: '#c4d2ff30' }]}>
-              <Camera color="#003d9b" size={24} />
-            </View>
-            <Text style={styles.gridItemTitle}>Escanear Receta</Text>
-            <Text style={styles.gridItemDesc}>Digitalizar con IA</Text>
-          </TouchableOpacity>
+        {(() => {
+          const totalAlarmsCount = alarmItems.length;
+          const takenAlarmsCount = alarmItems.filter(item => {
+            const med = medications.find(m => m.id === item.medId);
+            return isAlarmTakenOnDate(med, item.alarm.time, targetDate);
+          }).length;
 
-          <TouchableOpacity style={styles.gridItemCard} onPress={() => router.push('/chat')}>
-            <View style={[styles.gridIconBg, { backgroundColor: '#82f9be30' }]}>
-              <MessageSquare color="#00734c" size={24} />
-            </View>
-            <Text style={styles.gridItemTitle}>Consultar Chat</Text>
-            <Text style={styles.gridItemDesc}>Asistente virtual</Text>
-          </TouchableOpacity>
-        </View>
+          return (
+            <>
+              <View style={styles.gridContainer}>
+                <TouchableOpacity style={styles.gridItemCardDark} onPress={() => router.push('/scan')}>
+                  <Camera color="#64ffda" size={32} />
+                  <Text style={styles.gridItemTitleDark}>Escanear Receta</Text>
+                  <Text style={styles.gridItemDescDark}>Digitalizar con IA</Text>
+                </TouchableOpacity>
 
-        <View style={[styles.gridContainer, { marginTop: 12, marginBottom: 20 }]}>
-          <TouchableOpacity style={styles.gridItemCard} onPress={() => router.push('/alarms')}>
-            <View style={[styles.gridIconBg, { backgroundColor: '#fff2e0' }]}>
-              <Bell color="#b25e00" size={24} />
-            </View>
-            <Text style={styles.gridItemTitle}>Mis Alarmas</Text>
-            <Text style={styles.gridItemDesc}>Control de dosis</Text>
-          </TouchableOpacity>
+                <TouchableOpacity style={styles.gridItemCardLight} onPress={() => router.push('/chat')}>
+                  <MessageSquare color="#0052cc" size={32} />
+                  <Text style={styles.gridItemTitleLight}>Consultar Chat</Text>
+                  <Text style={styles.gridItemDescLight}>Asistente médico</Text>
+                </TouchableOpacity>
+              </View>
 
-          <TouchableOpacity style={styles.gridItemCard} onPress={() => router.push('/profile')}>
-            <View style={[styles.gridIconBg, { backgroundColor: '#fcdbe4' }]}>
-              <User color="#ba1a1a" size={24} />
-            </View>
-            <Text style={styles.gridItemTitle}>Mi Perfil</Text>
-            <Text style={styles.gridItemDesc}>Historial médico</Text>
-          </TouchableOpacity>
-        </View>
+              <View style={[styles.gridContainer, { marginTop: 12, marginBottom: 20 }]}>
+                <TouchableOpacity style={styles.gridItemCardLight} onPress={() => router.push('/alarms')}>
+                  <Bell color="#0088ff" size={32} />
+                  <Text style={styles.gridItemTitleLight}>Mis Alarmas</Text>
+                  <Text style={styles.gridItemDescLight}>Control de dosis</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.gridItemCardTeal} onPress={() => router.push('/profile')}>
+                  <User color="#00a86b" size={32} />
+                  <Text style={styles.gridItemTitleTeal}>Mi Perfil</Text>
+                  <Text style={styles.gridItemDescTeal}>{displayName} (Paciente)</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          );
+        })()}
 
         {/* Agenda de Medicamentos */}
         <View style={styles.agendaSection}>
@@ -455,7 +459,7 @@ export default function SummaryScreen() {
             )
           )}
 
-          {/* List of Intakes */}
+          {/* List of Intakes in Timeline Format */}
           {alarmItems.length === 0 ? (
             <View style={styles.emptyAgenda}>
               <Text style={styles.emptyAgendaText}>
@@ -463,41 +467,113 @@ export default function SummaryScreen() {
               </Text>
             </View>
           ) : (
-            alarmItems.map((item, idx) => {
-              const targetDate = getSelectedDate();
-              const med = medications.find(m => m.id === item.medId);
-              const isTaken = isAlarmTakenOnDate(med, item.alarm.time, targetDate);
+            (() => {
+              const getMonthAbbr = (date: Date) => {
+                const months = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
+                return months[date.getMonth()];
+              };
+              const monthText = getMonthAbbr(targetDate);
+              const dayNum = targetDate.getDate();
+
+              const pendingItems = alarmItems.filter(item => {
+                const med = medications.find(m => m.id === item.medId);
+                return !isAlarmTakenOnDate(med, item.alarm.time, targetDate);
+              });
+
+              const takenItems = alarmItems.filter(item => {
+                const med = medications.find(m => m.id === item.medId);
+                return isAlarmTakenOnDate(med, item.alarm.time, targetDate);
+              });
+
               return (
-                <View key={idx} style={[styles.intakeCard, isTaken && styles.intakeCardTaken]}>
-                  <View style={styles.intakeLeft}>
-                    <View style={[styles.intakeIconBg, { backgroundColor: item.iconBg }]}>
-                      <Text style={{ fontSize: 16 }}>💊</Text>
-                    </View>
-                    <View style={{ marginLeft: 12, flex: 1 }}>
-                      <Text style={[styles.intakeMedName, isTaken && styles.textLineThrough]}>
-                        {item.medName}
-                      </Text>
-                      <Text style={styles.intakeDose}>{item.medDose}</Text>
-                    </View>
-                  </View>
+                <View style={styles.timelineContainer}>
+                  {/* PENDIENTES SECTION */}
+                  {pendingItems.length > 0 && (
+                    <View style={styles.timelineSection}>
+                      <View style={styles.sectionHeaderRow}>
+                        <View style={[styles.sectionDot, { backgroundColor: '#0052cc' }]} />
+                        <Text style={styles.sectionTitleText}>Pendientes ({pendingItems.length})</Text>
+                      </View>
+                      
+                      {pendingItems.map((item, idx) => {
+                        const med = medications.find(m => m.id === item.medId);
+                        const isLast = idx === pendingItems.length - 1;
+                        
+                        return (
+                          <View key={`pending-${idx}`} style={styles.timelineRow}>
+                            {/* Columna Izquierda: Solo Círculo */}
+                            <View style={styles.timelineLeftColumn}>
+                              <View style={[styles.timelineDayCircle, { backgroundColor: '#0052cc' }]} />
+                              {!isLast && <View style={[styles.timelineVerticalLine, { backgroundColor: '#0052cc' }]} />}
+                            </View>
 
-                  <View style={styles.intakeRight}>
-                    <View style={[styles.timeBadge, isTaken && styles.timeBadgeTaken]}>
-                      <Text style={[styles.timeBadgeText, isTaken && styles.timeBadgeTextTaken]}>
-                        {item.alarm.time}
-                      </Text>
+                            {/* Columna Derecha: Tarjeta Vertical */}
+                            <View style={[styles.timelineCard, { flexDirection: 'column', alignItems: 'stretch' }]}>
+                              <Text style={styles.timelineCardMedName}>{item.medName}</Text>
+                              <Text style={styles.timelineCardDetailsText}>
+                                💊 {item.medDose}  •  ⏰ {item.alarm.time}
+                              </Text>
+                              
+                              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 8 }}>
+                                <TouchableOpacity 
+                                  style={styles.timelineCardButton}
+                                  onPress={() => handleToggleAlarm(item.medId, item.alarm.id)}
+                                >
+                                  <Text style={styles.timelineCardButtonText}>Tomar</Text>
+                                </TouchableOpacity>
+                              </View>
+                            </View>
+                          </View>
+                        );
+                      })}
                     </View>
+                  )}
 
-                    <TouchableOpacity
-                      style={[styles.checkCircle, isTaken && styles.checkCircleActive]}
-                      onPress={() => handleToggleAlarm(item.medId, item.alarm.id)}
-                    >
-                      {isTaken && <Text style={styles.checkMark}>✓</Text>}
-                    </TouchableOpacity>
-                  </View>
+                  {/* COMPLETADAS SECTION */}
+                  {takenItems.length > 0 && (
+                    <View style={[styles.timelineSection, { marginTop: 20 }]}>
+                      <View style={styles.sectionHeaderRow}>
+                        <View style={[styles.sectionDot, { backgroundColor: '#00a86b' }]} />
+                        <Text style={styles.sectionTitleText}>Tomados ({takenItems.length})</Text>
+                      </View>
+
+                      {takenItems.map((item, idx) => {
+                        const med = medications.find(m => m.id === item.medId);
+                        const isLast = idx === takenItems.length - 1;
+
+                        return (
+                          <View key={`taken-${idx}`} style={styles.timelineRow}>
+                            {/* Columna Izquierda: Solo Círculo */}
+                            <View style={styles.timelineLeftColumn}>
+                              <View style={[styles.timelineDayCircle, { backgroundColor: '#00a86b' }]} />
+                              {!isLast && <View style={[styles.timelineVerticalLine, { backgroundColor: '#00a86b' }]} />}
+                            </View>
+
+                            {/* Columna Derecha: Tarjeta Vertical */}
+                            <View style={[styles.timelineCard, styles.timelineCardTaken, { flexDirection: 'column', alignItems: 'stretch' }]}>
+                              <Text style={[styles.timelineCardMedName, styles.textLineThrough]}>{item.medName}</Text>
+                              <Text style={[styles.timelineCardDetailsText, styles.textLineThrough]}>
+                                💊 {item.medDose}  •  ⏰ {item.alarm.time}
+                              </Text>
+                              
+                              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 12, marginTop: 8 }}>
+                                <Text style={styles.statusLabelTextTaken}>✓ Tomado</Text>
+                                <TouchableOpacity 
+                                  style={styles.timelineCardUndoLink}
+                                  onPress={() => handleToggleAlarm(item.medId, item.alarm.id)}
+                                >
+                                  <Text style={styles.timelineCardUndoText}>DESHACER</Text>
+                                </TouchableOpacity>
+                              </View>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
                 </View>
               );
-            })
+            })()
           )}
         </View>
       </ScrollView>
@@ -580,32 +656,81 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
-  gridItemCard: {
+  gridItemCardDark: {
     width: '48%',
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#edeef0',
-    padding: 16,
-    alignItems: 'flex-start',
-  },
-  gridIconBg: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    justifyContent: 'center',
+    backgroundColor: '#161726',
+    borderRadius: 24,
+    padding: 20,
     alignItems: 'center',
-    marginBottom: 12,
+    justifyContent: 'center',
+    height: 155,
+    shadowColor: '#161726',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  gridItemTitle: {
+  gridItemCardLight: {
+    width: '48%',
+    backgroundColor: '#f3f5f9',
+    borderRadius: 24,
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 155,
+  },
+  gridItemCardTeal: {
+    width: '48%',
+    backgroundColor: '#e1f7ec',
+    borderRadius: 24,
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 155,
+    shadowColor: '#e1f7ec',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  gridItemTitleDark: {
     fontSize: 14,
-    fontWeight: '700',
-    color: '#191c1e',
-    marginBottom: 4,
+    fontWeight: '800',
+    color: '#ffffff',
+    marginTop: 10,
+    textAlign: 'center',
   },
-  gridItemDesc: {
-    fontSize: 12,
-    color: '#737685',
+  gridItemDescDark: {
+    fontSize: 11,
+    color: '#a1a4c4',
+    marginTop: 3,
+    textAlign: 'center',
+  },
+  gridItemTitleLight: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#12131a',
+    marginTop: 10,
+    textAlign: 'center',
+  },
+  gridItemDescLight: {
+    fontSize: 11,
+    color: '#787b89',
+    marginTop: 3,
+    textAlign: 'center',
+  },
+  gridItemTitleTeal: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#004d30',
+    marginTop: 10,
+    textAlign: 'center',
+  },
+  gridItemDescTeal: {
+    fontSize: 11,
+    color: '#007d4f',
+    marginTop: 3,
+    textAlign: 'center',
   },
   // Agenda Section styles
   agendaSection: {
@@ -660,87 +785,176 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textAlign: 'center',
   },
-  intakeCard: {
+  timelineContainer: {
+    marginTop: 12,
+  },
+  timelineSection: {
+    marginBottom: 20,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingHorizontal: 4,
+  },
+  sectionDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 10,
+  },
+  sectionTitleText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#191c1e',
+    letterSpacing: 0.3,
+  },
+  timelineRow: {
+    flexDirection: 'row',
+    marginBottom: 16,
+  },
+  timelineLeftColumn: {
+    width: 32,
+    alignItems: 'center',
+    position: 'relative',
+    paddingTop: 14,
+  },
+  timelineDayCircle: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: '#ffffff',
+  },
+  timelineVerticalLine: {
+    position: 'absolute',
+    top: 28,
+    bottom: -20,
+    width: 2,
+    borderRadius: 1,
+    opacity: 0.3,
+  },
+  timelineCard: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#edeef0',
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  timelineCardTaken: {
+    backgroundColor: '#f8f9fb',
+    borderColor: '#edeef0',
+    opacity: 0.75,
+  },
+  timelineCardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#edeef0',
-    padding: 14,
-    marginBottom: 10,
+    marginBottom: 8,
   },
-  intakeCardTaken: {
-    backgroundColor: '#f8f9fb',
-    borderColor: '#edeef0',
-    opacity: 0.8,
+  timelineCardTime: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#191c1e',
   },
-  intakeLeft: {
+  timelineCardMedName: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#191c1e',
+  },
+  timelineBadgePurple: {
+    backgroundColor: '#f0efff',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  timelineBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#7f56da',
+    letterSpacing: 0.3,
+  },
+  timelineCardFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: '#f1f2f4',
+    paddingTop: 12,
+  },
+  timelineCardDetailsRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
+    marginBottom: 14,
+  },
+  timelineCardDetailsText: {
+    fontSize: 13,
+    color: '#535661',
+    fontWeight: '500',
+  },
+  timelineCardLeft: {
     flex: 1,
-  },
-  intakeIconBg: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
     justifyContent: 'center',
-    alignItems: 'center',
+    paddingRight: 8,
   },
-  intakeMedName: {
-    fontSize: 14,
+  statusLabelTextTaken: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#00a86b',
+  },
+  statusContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  statusIndicatorDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  statusLabelText: {
+    fontSize: 12,
     fontWeight: '700',
-    color: '#191c1e',
+    color: '#737685',
+  },
+  timelineCardButton: {
+    backgroundColor: '#0052cc',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#0052cc',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  timelineCardButtonText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#ffffff',
+  },
+  timelineCardUndoLink: {
+    paddingVertical: 4,
+  },
+  timelineCardUndoText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#737685',
+    letterSpacing: 0.5,
   },
   textLineThrough: {
     textDecorationLine: 'line-through',
     color: '#737685',
-  },
-  intakeDose: {
-    fontSize: 12,
-    color: '#737685',
-    marginTop: 2,
-  },
-  intakeRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  timeBadge: {
-    backgroundColor: '#c4d2ff30',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  timeBadgeTaken: {
-    backgroundColor: '#82f9be30',
-  },
-  timeBadgeText: {
-    fontSize: 11,
-    color: '#003d9b',
-    fontWeight: '700',
-  },
-  timeBadgeTextTaken: {
-    color: '#00734c',
-  },
-  checkCircle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#003d9b',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  checkCircleActive: {
-    backgroundColor: '#00734c',
-    borderColor: '#00734c',
-  },
-  checkMark: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: '800',
   },
   modalOverlay: {
     flex: 1,
