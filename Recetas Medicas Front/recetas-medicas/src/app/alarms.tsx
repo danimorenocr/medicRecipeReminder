@@ -997,31 +997,6 @@ export default function AlarmsScreen() {
         showsVerticalScrollIndicator={false}
       >
         
-        {/* Card 1: Progreso del día */}
-        <View style={styles.progressCard}>
-          <View style={styles.progressCardLeft}>
-            <Text style={styles.progressCardTitle}>Progreso del día</Text>
-            <Text style={styles.progressCardDesc}>
-              {totalAlarms > 0 
-                ? `Has completado el ${progressPercent}% de tus tomas.` 
-                : "No hay alarmas programadas para hoy."}
-            </Text>
-            <View style={styles.completedBadge}>
-              <Text style={styles.completedBadgeText}>
-                {completedAlarms} de {totalAlarms} completadas
-              </Text>
-            </View>
-          </View>
-          {/* Circular Progress Ring Mock */}
-          <View style={styles.progressRingWrapper}>
-            <View style={styles.progressRingOuter}>
-              <View style={styles.progressRingInner}>
-                <Text style={styles.progressPercentText}>{progressPercent}%</Text>
-              </View>
-            </View>
-          </View>
-        </View>
-
         {/* Card 2: Nueva Alarma */}
         <TouchableOpacity style={styles.newAlarmCard} activeOpacity={0.85} onPress={handleNewAlarmPress}>
           <View style={styles.newAlarmLeft}>

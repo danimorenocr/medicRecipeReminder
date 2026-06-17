@@ -75,7 +75,6 @@ El bot de Telegram (`telegram_bot.py`) actúa como un punto de entrada alternati
 
 ### 3. Gestor de Alarmas y Notificaciones
 * **Cálculo de Dosis y Duración:** Al ingresar un medicamento, puedes escribir la **Cantidad Prescrita** (ej. 10 tabletas) y el sistema calculará automáticamente cuántos días dura el tratamiento en base a la dosis y frecuencia (ej. 1 tableta cada 12 horas = 5 días de duración).
-* **Anillo de Progreso:** Muestra en tiempo real el porcentaje completado de las tomas del día.
 * **Modal de Tomas Completadas:** Detalla las horas y nombres de los medicamentos tomados hoy.
 * **Notificaciones Locales (Background/Foreground):** Integra notificaciones nativas en el móvil a las horas exactas de tus alarmas.
 
@@ -83,8 +82,31 @@ El bot de Telegram (`telegram_bot.py`) actúa como un punto de entrada alternati
 * **Ficha del Paciente:** Registra credenciales del perfil, fecha de nacimiento, sexo, tipo de sangre (RH), alergias críticas y condiciones médicas de base.
 * **Contactos de Emergencia Dinámicos:** Muestra la información de contacto del último médico que emitió tu receta guardada en el historial.
 
-### 5. Chat Médico Empático
-* **Triaje de Dolor:** Identifica si el usuario expresa dolor o molestias físicas al iniciar un mensaje en el chat, solicitándole información breve antes de ofrecer recomendaciones alineadas con sus medicamentos recetados.
+### 5. Chat de Orientación Médica Empática (Protocolo A.L.I.C.I.A.)
+* **Evaluación Clínica Estructurada (A.L.I.C.I.A.)**: El chat médico virtual guía al usuario en un interrogatorio natural y paso a paso para desmenuzar cualquier dolor o molestia principal:
+  - **A - Aparición**: ¿Cuándo empezó y cómo evolucionó?
+  - **L - Localización**: ¿En qué parte exacta duele?
+  - **I - Intensidad**: Escala de dolor del 1 al 10.
+  - **C - Características**: Cómo se siente el dolor (punzante, opresivo, cólico, etc.).
+  - **I - Irradiación**: Si el dolor se desplaza hacia otra zona del cuerpo.
+  - **A - Atenuación / Agravación**: Qué factores alivian o empeoran la molestia.
+* **Diagnósticos Basados en Metáforas**: El asistente traduce jerga médica compleja a analogías cotidianas para facilitar el entendimiento:
+  - *Migraña por vasoespasmo* ➔ Arterias de la cabeza bailando o parpadeando como luces de Navidad.
+  - *Reflujo / Gastritis* ➔ Ácido estomacal fuerte como cloro de piscina o compuerta esofágica desajustada como puerta vieja.
+  - *Espasmo muscular* ➔ Fibras del músculo trenzadas como un nudo de corbata o cables enredados.
+* **Filtros de Alarma ("Red Flags")**: Evalúa constantemente síntomas críticos (dificultad respiratoria, dolor opresivo de pecho, sangrado, pérdida de fuerza o conciencia, fiebre extremadamente alta). Si los detecta, detiene el interrogatorio clínico de inmediato e indica al usuario acudir a emergencias con prioridad.
+
+### 6. Localizador de Urgencias y Hospitales 24h
+* **Integración con Google Places API**: Posee un endpoint proxy seguro (`GET /api/hospitals/nearby`) que consulta en tiempo real los centros médicos disponibles con la palabra clave `urgencias` (reforzando que sean servicios 24h humanos y no veterinarias o laboratorios clínicos).
+* **Filtros de Exclusión Avanzados**: Descarta del listado de forma automática tanto clínicas veterinarias (`veterinaria`, `mascotas`, `pet`) como laboratorios clínicos y centros de diagnóstico (`laboratorio`, `diagnostico`).
+* **Algoritmo de Recomendación**: Analiza los datos de Google para ofrecer tres sugerencias destacadas:
+  - 🚨 **Recomendado (Mejor Opción)**: Balance óptimo entre la mejor calificación de estrellas y menor distancia.
+  - 📍 **El Más Cercano**: Menor distancia lineal calculada mediante la fórmula de Haversine.
+  - ⭐ **Mejor Calificado**: Hospital con mayor promedio de estrellas y volumen de calificaciones de Google.
+* **Geolocalización y Ruteo GPS**:
+  - Obtiene la ubicación precisa del dispositivo mediante `expo-location`.
+  - Proporciona ruteo interactivo al pulsar **"Cómo llegar"**, abriendo la aplicación de mapas nativa (Google Maps / Apple Maps) mediante Deep Linking, con un fallback web seguro e inmune a fallos.
+* **Modo de Simulación**: En ausencia de API Key en el entorno de desarrollo, simula centros médicos reales en Colombia geolocalizados cerca de la posición del GPS del desarrollador para realizar pruebas rápidas y completas.
 
 ---
 
