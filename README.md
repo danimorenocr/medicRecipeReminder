@@ -72,7 +72,7 @@ El bot de Telegram (`telegram_bot.py`) actúa como un punto de entrada alternati
 ## 🚀 Módulos y Características Implementadas
 
 ### 1. Extracción y Enriquecimiento con IA (Backend Pipeline)
-* **Lector Óptico de Recetas:** Utiliza `gemini-2.5-flash` con esquemas de respuesta estrictos en formato JSON para obtener paciente, clínica, médico, diagnóstico y medicamentos (nombre, dosis, frecuencia, duración).
+* **Lector Óptico de Recetas:** Utiliza `gemini-2.5-flash` con esquemas de respuesta estrictos en formato JSON para obtener paciente, clínica, médico, diagnóstico y medicamentos (nombre, dosis, frecuencia, duración). Como puente de medicamentos (Colombia ➔ OpenFDA), el prompt solicita no solo el nombre comercial (ej: Dolex, Buscapina, Nolotil), sino también el principio activo traducido al inglés (ej: Acetaminophen en lugar de Dolex).
 * **Traductor de Diagnósticos (CIE-10):** Consulta la base de datos de la OMS (ICD-10) para encontrar el código oficial de la enfermedad.
 * **Explicador de Medicamentos:** Usa Groq con `llama-3.3-70b-versatile` para generar una guía comprensible, respondiendo preguntas clave como: *¿Para qué sirve este medicamento?*, *¿Cómo me ayuda?* y *¿Qué precauciones debo tener?*.
 * **Vínculo Oficial OpenFDA:** Consulta advertencias utilizando el principio activo traducido automáticamente por Gemini (ej: Ibuprofen o Acetaminophen), garantizando compatibilidad entre las recetas colombianas y la base de datos de EE. UU.
@@ -122,7 +122,7 @@ El bot de Telegram (`telegram_bot.py`) actúa como un punto de entrada alternati
 
 ## 🗃️ Esquema de la Base de Datos (`recetas.db`)
 
-La persistencia de datos utiliza SQLite, configurada en **Modo WAL** (Write-Ahead Logging) para permitir la concurrencia simultánea entre las peticiones de la App Móvil y los hilos de recordatorios del Bot de Telegram. El esquema consta de las siguientes tablas principales:
+La persistencia de datos utiliza **SQLite (recetas.db)** configurada en **Modo WAL** (Write-Ahead Logging) para permitir la concurrencia simultánea entre las peticiones de la App Móvil y los hilos de recordatorios del Bot de Telegram, evitando bloqueos de escritura concurrentes. El esquema consta de las siguientes tablas principales:
 
 ### `recetas`
 Almacena las cabeceras de los diagnósticos y doctores.
@@ -158,7 +158,7 @@ Almacena el detalle de los fármacos.
 ## 🔐 Seguridad y Autenticación
 
 Para proteger los datos de salud sensibles de los usuarios en entornos de demostración y producción (ideal para presentar en LinkedIn), la arquitectura contempla la protección de endpoints y el resguardo de información:
-* **Autenticación por API Key (Mock Auth)**: Las llamadas desde la aplicación móvil React Native a los endpoints sensibles (`/api/profile`, `/api/recipes`, etc.) viajan firmadas con cabeceras `X-API-KEY` y son validadas por un middleware de autenticación en FastAPI para evitar accesos no autorizados.
+* **Autenticación y Seguridad de Endpoints (Mock Auth / API Key)**: Para no dejar endpoints sensibles (como `/api/profile`) abiertos al público, las peticiones desde React Native viajan con una cabecera `X-API-KEY` simple o un middleware básico de JWT para autenticar y proteger los datos sensibles de salud del usuario.
 * **Cifrado de Datos en Reposo**: La información personal y médica del usuario y del paciente es automáticamente encriptada en la base de datos local SQLite utilizando `Fernet` (cifrado simétrico robusto bajo el estándar AES-128).
 
 ---
