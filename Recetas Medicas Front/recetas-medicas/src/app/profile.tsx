@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, StatusBar, TextInput, ActivityIndicator, Alert, Platform } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, StatusBar, TextInput, ActivityIndicator, Alert, Platform, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Wifi, Plus, Phone, FileText, Calendar, ShieldAlert, Award, Heart, Edit2, Lock, User as UserIcon, Save, X, HeartPulse } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
-import { API_URL } from '../constants/api';
+import { API_URL, API_KEY } from '../constants/api';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -26,7 +26,9 @@ export default function ProfileScreen() {
   const fetchLastRecipe = async () => {
     try {
       console.log("[fetchLastRecipe] Fetching from:", `${API_URL}/api/recipes`);
-      const response = await fetch(`${API_URL}/api/recipes`);
+      const response = await fetch(`${API_URL}/api/recipes`, {
+        headers: { 'X-API-KEY': API_KEY }
+      });
       if (response.ok) {
         const data = await response.json();
         if (data && data.length > 0) {
@@ -42,8 +44,10 @@ export default function ProfileScreen() {
   const fetchProfile = async () => {
     setLoading(true);
     try {
-      console.log("[fetchProfile] Fetching from:", `${API_URL}/api/profile`);
-      const response = await fetch(`${API_URL}/api/profile`);
+      console.log("[fetchProfile] Fetching from:", `${API_URL}/api/profile`, "using key:", API_KEY);
+      const response = await fetch(`${API_URL}/api/profile`, {
+        headers: { 'X-API-KEY': API_KEY }
+      });
       if (response.ok) {
         const data = await response.json();
         if (data && data.username) {
@@ -95,6 +99,7 @@ export default function ProfileScreen() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-API-KEY': API_KEY,
         },
         body: JSON.stringify({
           username,
@@ -326,12 +331,13 @@ export default function ProfileScreen() {
       {/* Header matching screenshot */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <View style={styles.doctorAvatar}>
-            <HeartPulse color="#0052cc" size={18} />
-          </View>
-          <Text style={styles.headerTitle}>MediAssist AI</Text>
+          <Image 
+            source={require('../../assets/images/icon.png')} 
+            style={{ width: 32, height: 32, borderRadius: 8, marginRight: 10 }} 
+            resizeMode="contain"
+          />
+          <Text style={styles.headerTitle}>Alicia AI</Text>
         </View>
-        <Wifi color="#191c1e" size={20} />
       </View>
 
       <ScrollView 
@@ -499,6 +505,13 @@ export default function ProfileScreen() {
             <Text style={styles.urgenciasArrow}>➔</Text>
           </View>
         </TouchableOpacity>
+
+        {/* Disclaimer Card */}
+        <View style={styles.disclaimerCard}>
+          <Text style={styles.disclaimerText}>
+            ⚠️ Alicia AI es una herramienta de apoyo e información basada en inteligencia artificial. Los datos mostrados tienen un carácter meramente informativo y educativo, y no sustituyen el diagnóstico, tratamiento o consejo de un profesional médico real.
+          </Text>
+        </View>
 
       </ScrollView>
     </SafeAreaView>
@@ -940,5 +953,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: '#ba1a1a',
+  },
+  disclaimerCard: {
+    backgroundColor: '#f1f3f9',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#dcdfe9',
+    padding: 16,
+    marginTop: 8,
+    marginBottom: 20,
+  },
+  disclaimerText: {
+    fontSize: 12,
+    color: '#535661',
+    lineHeight: 18,
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
 });

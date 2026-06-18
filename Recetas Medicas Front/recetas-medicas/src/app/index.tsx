@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, StatusBar, Platform, Modal } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, StatusBar, Platform, Modal, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Briefcase, Camera, Wifi, Bell, MessageSquare, User, Calendar } from 'lucide-react-native';
-import { API_URL } from '../constants/api';
+import { API_URL, API_KEY } from '../constants/api';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 export default function SummaryScreen() {
@@ -118,7 +118,9 @@ export default function SummaryScreen() {
 
   const fetchMedications = async () => {
     try {
-      const response = await fetch(`${API_URL}/api/medications`);
+      const response = await fetch(`${API_URL}/api/medications`, {
+        headers: { 'X-API-KEY': API_KEY }
+      });
       if (response.ok) {
         const data = await response.json();
         setMedications(data);
@@ -179,6 +181,7 @@ export default function SummaryScreen() {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          'X-API-KEY': API_KEY,
         },
         body: JSON.stringify(updatedMed),
       });
@@ -236,7 +239,9 @@ export default function SummaryScreen() {
 
   const fetchProfileName = async () => {
     try {
-      const response = await fetch(`${API_URL}/api/profile`);
+      const response = await fetch(`${API_URL}/api/profile`, {
+        headers: { 'X-API-KEY': API_KEY }
+      });
       if (response.ok) {
         const data = await response.json();
         if (data && data.username) {
@@ -263,16 +268,17 @@ export default function SummaryScreen() {
       {/* Header matching screenshot */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <View style={styles.briefcaseWrapper}>
-            <Briefcase color="#0052CC" size={20} fill="#0052CC" />
-          </View>
-          <Text style={styles.headerTitle}>MediaAssist AI</Text>
+          <Image 
+            source={require('../../assets/images/icon.png')} 
+            style={styles.logoImage} 
+            resizeMode="contain"
+          />
+          <Text style={styles.headerTitle}>Alicia AI</Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           <TouchableOpacity onPress={() => router.push('/scan')} style={{ padding: 4 }}>
             <Camera color="#003d9b" size={22} />
           </TouchableOpacity>
-          <Wifi color="#191c1e" size={20} />
         </View>
       </View>
 
@@ -608,13 +614,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  briefcaseWrapper: {
+  logoImage: {
     width: 36,
     height: 36,
     borderRadius: 10,
-    backgroundColor: '#0052cc10',
-    justifyContent: 'center',
-    alignItems: 'center',
     marginRight: 10,
   },
   headerTitle: {

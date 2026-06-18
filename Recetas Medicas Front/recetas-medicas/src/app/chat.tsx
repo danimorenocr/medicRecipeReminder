@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, ScrollView, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, StatusBar, ActivityIndicator, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Wifi, ArrowLeft, ArrowRight, MessageSquare, Camera, Mic, Send, FileText, Check } from 'lucide-react-native';
-import { API_URL } from '../constants/api';
+import { Wifi, ArrowLeft, ArrowRight, MessageSquare, Camera, Mic, Send, FileText, Check, Trash2 } from 'lucide-react-native';
+import { API_URL, API_KEY } from '../constants/api';
 
 const renderMarkdown = (text: string, defaultColor: string = '#333333') => {
   if (!text) return null;
@@ -57,14 +57,14 @@ export default function ChatScreen() {
   const router = useRouter();
   const [inputText, setInputText] = useState('');
   const [sending, setSending] = useState(false);
-  const [messages, setMessages] = useState<Array<{ id: string; role: 'user' | 'assistant'; content: string; time: string }>>([
-    {
-      id: '1',
-      role: 'assistant',
-      content: 'Hola, soy tu asistente de MediAssist. Estoy aquí para ayudarte a entender tus recetas médicas, resolver dudas sobre tus medicamentos o responder preguntas generales de salud. ¿Qué deseas consultar hoy?',
-      time: '09:00 AM'
-    }
-  ]);
+  const INITIAL_MESSAGE = {
+    id: 'welcome',
+    role: 'assistant' as const,
+    content: 'Hola, soy tu asistente Alicia. Estoy aquí para ayudarte a entender tus recetas médicas, resolver dudas sobre tus medicamentos o responder preguntas generales de salud. ¿Qué deseas consultar hoy?',
+    time: '09:00 AM'
+  };
+
+  const [messages, setMessages] = useState<Array<{ id: string; role: 'user' | 'assistant'; content: string; time: string }>>([INITIAL_MESSAGE]);
 
   const formatTime = () => {
     const date = new Date();
@@ -75,6 +75,71 @@ export default function ChatScreen() {
     hours = hours ? hours : 12;
     const strMinutes = minutes < 10 ? '0' + minutes : minutes;
     return `${hours}:${strMinutes} ${ampm}`;
+  };
+
+  const formatTimeFromDB = (dateStr: string) => {
+    try {
+      const normalized = dateStr.replace(' ', 'T') + 'Z';
+      const date = new Date(normalized);
+      if (isNaN(date.getTime())) return '09:00 AM';
+      let hours = date.getHours();
+      const minutes = date.getMinutes();
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12;
+      hours = hours ? hours : 12;
+      const strMinutes = minutes < 10 ? '0' + minutes : minutes;
+      return `${hours}:${strMinutes} ${ampm}`;
+    } catch {
+      return '09:00 AM';
+    }
+  };
+
+  const fetchHistory = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/chat/history`, {
+        headers: {
+          'X-API-KEY': API_KEY,
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.history && data.history.length > 0) {
+          const formatted = data.history.map((msg: any, idx: number) => ({
+            id: idx.toString(),
+            role: msg.role as 'user' | 'assistant',
+            content: msg.content,
+            time: msg.created_at ? formatTimeFromDB(msg.created_at) : '09:00 AM'
+          }));
+          setMessages(formatted);
+        } else {
+          setMessages([INITIAL_MESSAGE]);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching chat history:', error);
+    }
+  };
+
+  useEffect(() => {
+    fetchHistory();
+  }, []);
+
+  const handleClearHistory = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/chat/history`, {
+        method: 'DELETE',
+        headers: {
+          'X-API-KEY': API_KEY,
+        },
+      });
+      if (response.ok) {
+        setMessages([INITIAL_MESSAGE]);
+      } else {
+        console.error('Error clearing chat history');
+      }
+    } catch (error) {
+      console.error('Error clearing chat history:', error);
+    }
   };
 
   const handleSend = async (customText?: string) => {
@@ -97,19 +162,14 @@ export default function ChatScreen() {
     setMessages(prev => [...prev, userMessage]);
 
     try {
-      const history = messages.map(m => ({
-        role: m.role,
-        content: m.content
-      }));
-
       const response = await fetch(`${API_URL}/api/chat`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'X-API-KEY': API_KEY,
         },
         body: JSON.stringify({
-          message: textToSend.trim(),
-          history
+          message: textToSend.trim()
         })
       });
 
@@ -132,7 +192,7 @@ export default function ChatScreen() {
       const errorMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant' as const,
-        content: 'Hubo un error de conexión con el asistente August. Asegúrate de que el backend esté ejecutándose.',
+        content: 'Hubo un error de conexión con el asistente Alicia. Asegúrate de que el backend esté ejecutándose.',
         time: formatTime()
       };
       setMessages(prev => [...prev, errorMessage]);
@@ -156,17 +216,25 @@ export default function ChatScreen() {
             <ArrowLeft color="#191c1e" size={24} />
           </TouchableOpacity>
           <Image 
-            source={require('@/assets/images/icon.png')} 
-            style={{ width: 28, height: 28, borderRadius: 6, marginRight: 2 }} 
+            source={require('../../assets/images/alicia_attentive.png')} 
+            style={{ width: 32, height: 32, borderRadius: 16, marginRight: 2 }} 
           />
           <View style={{ marginLeft: 8 }}>
-            <Text style={styles.headerTitle}>MediAssist AI</Text>
+            <Text style={styles.headerTitle}>Alicia</Text>
             <View style={styles.statusRow}>
               <View style={styles.statusDot} />
               <Text style={styles.statusText}>En línea</Text>
             </View>
           </View>
         </View>
+        
+        <TouchableOpacity 
+          onPress={handleClearHistory}
+          style={{ padding: 8 }}
+          hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+        >
+          <Trash2 color="#ff4d4f" size={22} />
+        </TouchableOpacity>
       </View>
 
       <KeyboardAvoidingView 
@@ -179,9 +247,10 @@ export default function ChatScreen() {
         >
           {/* Asistente Inteligente Top Block */}
           <View style={styles.assistantIntro}>
-            <View style={styles.introIconWrapper}>
-              <FileText color="#003d9b" size={24} />
-            </View>
+            <Image 
+              source={require('../../assets/images/alicia_attentive.png')} 
+              style={{ width: 80, height: 80, borderRadius: 16, marginBottom: 12 }} 
+            />
             <Text style={styles.introTitle}>Asistente Inteligente</Text>
             <Text style={styles.introSubtitle}>
               Tu historial está encriptado y solo tú puedes verlo. ¿En qué puedo ayudarte hoy?
@@ -223,9 +292,12 @@ export default function ChatScreen() {
 
           {sending && (
             <View style={[styles.botMessageRow, { alignItems: 'center', opacity: 0.8 }]}>
-              <View style={[styles.botBubble, { flexDirection: 'row', alignItems: 'center', gap: 8 }]}>
-                <ActivityIndicator size="small" color="#003d9b" />
-                <Text style={[styles.msgText, { fontStyle: 'italic', color: '#737685' }]}>Tu asistente está escribiendo...</Text>
+              <View style={[styles.botBubble, { flexDirection: 'row', alignItems: 'center', gap: 10 }]}>
+                <Image 
+                  source={require('../../assets/images/alicia_thinking.png')} 
+                  style={{ width: 28, height: 28, borderRadius: 6 }} 
+                />
+                <Text style={[styles.msgText, { fontStyle: 'italic', color: '#737685' }]}>Alicia está pensando...</Text>
               </View>
             </View>
           )}
@@ -256,7 +328,7 @@ export default function ChatScreen() {
             
             <TextInput 
               style={styles.textInput} 
-              placeholder="Pregúntale a MediAssist..."
+              placeholder="Pregúntale a Alicia..."
               value={inputText}
               onChangeText={setInputText}
               placeholderTextColor="#737685"

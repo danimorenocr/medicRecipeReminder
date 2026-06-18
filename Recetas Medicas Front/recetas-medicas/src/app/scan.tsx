@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { Wifi, ArrowLeft, Info, Zap, ZoomIn, CheckCircle2, FileText, RefreshCw, Bell } from 'lucide-react-native';
-import { API_URL } from '../constants/api';
+import { API_URL, API_KEY } from '../constants/api';
 
 export default function ScanScreen() {
   const router = useRouter();
@@ -73,6 +73,7 @@ export default function ScanScreen() {
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'multipart/form-data',
+          'X-API-KEY': API_KEY,
         },
       });
 

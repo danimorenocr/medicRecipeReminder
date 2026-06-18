@@ -1,6 +1,16 @@
-# MediaAssist AI (Recetas Claras) - Asistente de Salud Inteligente Completo
+# Alicia AI - Asistente de Salud Inteligente Completo
 
-MediaAssist AI (también conocido como **Recetas Claras**) es un ecosistema de salud inteligente diseñado para simplificar la gestión y el seguimiento de tratamientos médicos. Permite a los usuarios digitalizar recetas u órdenes médicas en formato físico (imágenes) mediante Inteligencia Artificial, entender su diagnóstico en lenguaje sencillo, programar alarmas de toma de medicamentos y chatear con un asistente de salud empático.
+<p align="center">
+  <img src="Recetas%20Medicas%20Front/recetas-medicas/assets/images/icon.png" width="150" alt="Alicia AI Logo" style="border-radius: 28px;" />
+</p>
+
+<p align="center">
+  <b>Alicia AI</b> (también conocido como <b>Recetas Claras</b>) es un ecosistema de salud inteligente diseñado para simplificar la gestión y el seguimiento de tratamientos médicos. Permite a los usuarios digitalizar recetas u órdenes médicas en formato físico (imágenes) mediante Inteligencia Artificial, entender su diagnóstico en lenguaje sencillo, programar alarmas de toma de medicamentos y chatear con un asistente de salud empático.
+</p>
+
+<p align="center">
+  <img src="Recetas%20Medicas%20Front/recetas-medicas/assets/images/alicia_ai_preview.jpg" width="100%" alt="Alicia AI Preview" style="border-radius: 16px;" />
+</p>
 
 El proyecto está compuesto por:
 1. **Back (Backend API + Bot de Telegram):** Escrito en Python (FastAPI, SQLite, Telegram Bot API, Gemini 2.5 Flash, Llama 3.3).
@@ -27,7 +37,7 @@ El ecosistema está construido siguiendo principios de **Clean Architecture** (A
                                       ▼ (Peticiones HTTP Rest / JSON)
 ┌─────────────────────────────────────────────────────────────────────────────────────────┐
 │                                 API FASTAPI (api.py)                                    │
-│ - Endpoints de consulta y almacenamiento (/api/profile, /api/medications, /api/recipes).│
+│ - Endpoints de base (/api/profile, /api/medications, /api/recipes, /api/chat/history).  │
 │ - Canalización del procesamiento de imágenes (/api/recipes/process).                     │
 │ - Endpoint del Asistente Virtual (/api/chat).                                           │
 └─────────────────────────────────────┬───────────────────────────────────────────────────┘
@@ -46,7 +56,7 @@ El ecosistema está construido siguiendo principios de **Clean Architecture** (A
                                       ▼ (Base de Datos Local)
 ┌─────────────────────────────────────────────────────────────────────────────────────────┐
 │                              BASE DE DATOS SQLITE (recetas.db)                         │
-│ - Tablas: recetas, medicamentos, usuarios, recordatorios, mensajes_telegram.            │
+│ - Tablas: recetas, medicamentos, usuarios, recordatorios, msgs_telegram, msgs_chat.     │
 └─────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -62,10 +72,10 @@ El bot de Telegram (`telegram_bot.py`) actúa como un punto de entrada alternati
 ## 🚀 Módulos y Características Implementadas
 
 ### 1. Extracción y Enriquecimiento con IA (Backend Pipeline)
-* **Lector Óptico de Recetas:** Utiliza `gemini-2.5-flash` con esquemas de respuesta estrictos en formato JSON para obtener paciente, clínica, médico, diagnóstico y medicamentos (nombre, dosis, frecuencia, duración).
+* **Lector Óptico de Recetas:** Utiliza `gemini-2.5-flash` con esquemas de respuesta estrictos en formato JSON para obtener paciente, clínica, médico, diagnóstico y medicamentos (nombre, dosis, frecuencia, duración). Como puente de medicamentos (Colombia ➔ OpenFDA), el prompt solicita no solo el nombre comercial (ej: Dolex, Buscapina, Nolotil), sino también el principio activo traducido al inglés (ej: Acetaminophen en lugar de Dolex).
 * **Traductor de Diagnósticos (CIE-10):** Consulta la base de datos de la OMS (ICD-10) para encontrar el código oficial de la enfermedad.
 * **Explicador de Medicamentos:** Usa Groq con `llama-3.3-70b-versatile` para generar una guía comprensible, respondiendo preguntas clave como: *¿Para qué sirve este medicamento?*, *¿Cómo me ayuda?* y *¿Qué precauciones debo tener?*.
-* **Vínculo Oficial OpenFDA:** Extrae indicaciones, advertencias y dosificación técnica consultando la API oficial de la FDA de Estados Unidos.
+* **Vínculo Oficial OpenFDA:** Consulta advertencias utilizando el principio activo traducido automáticamente por Gemini (ej: Ibuprofen o Acetaminophen), garantizando compatibilidad entre las recetas colombianas y la base de datos de EE. UU.
 
 ### 2. Agenda y Plan de Medicación (Frontend Dashboard)
 * **Agenda Multi-Día Interactiva:** Barra de acceso rápido para **Hoy**, **Mañana** y **Pasado Mañana**, además de un botón de calendario para abrir un selector de fecha en **cualquier día**.
@@ -95,6 +105,7 @@ El bot de Telegram (`telegram_bot.py`) actúa como un punto de entrada alternati
   - *Reflujo / Gastritis* ➔ Ácido estomacal fuerte como cloro de piscina o compuerta esofágica desajustada como puerta vieja.
   - *Espasmo muscular* ➔ Fibras del músculo trenzadas como un nudo de corbata o cables enredados.
 * **Filtros de Alarma ("Red Flags")**: Evalúa constantemente síntomas críticos (dificultad respiratoria, dolor opresivo de pecho, sangrado, pérdida de fuerza o conciencia, fiebre extremadamente alta). Si los detecta, detiene el interrogatorio clínico de inmediato e indica al usuario acudir a emergencias con prioridad.
+* **Historial de Chat Persistente con Contexto**: Las conversaciones se almacenan en SQLite (`mensajes_chat`) y el backend recupera automáticamente los mensajes previos para adjuntarlos como contexto conversacional al LLM (Groq). Incluye un botón para vaciar el historial directamente desde la interfaz de la app.
 
 ### 6. Localizador de Urgencias y Hospitales 24h
 * **Integración con Google Places API**: Posee un endpoint proxy seguro (`GET /api/hospitals/nearby`) que consulta en tiempo real los centros médicos disponibles con la palabra clave `urgencias` (reforzando que sean servicios 24h humanos y no veterinarias o laboratorios clínicos).
@@ -112,7 +123,7 @@ El bot de Telegram (`telegram_bot.py`) actúa como un punto de entrada alternati
 
 ## 🗃️ Esquema de la Base de Datos (`recetas.db`)
 
-La persistencia de datos utiliza SQLite. El esquema consta de las siguientes tablas principales:
+La persistencia de datos utiliza **SQLite (recetas.db)** configurada en **Modo WAL** (Write-Ahead Logging) para permitir la concurrencia simultánea entre las peticiones de la App Móvil y los hilos de recordatorios del Bot de Telegram, evitando bloqueos de escritura concurrentes. El esquema consta de las siguientes tablas principales:
 
 ### `recetas`
 Almacena las cabeceras de los diagnósticos y doctores.
@@ -142,6 +153,21 @@ Almacena el detalle de los fármacos.
 ### `usuarios`
 * `id` (INTEGER PRIMARY KEY)
 * `username`, `password`, `fecha_nacimiento`, `tipo_sangre`, `alergias`, `condicion_base`, `sexo` (TEXT)
+
+### `mensajes_chat`
+Historial de conversación de la app móvil con Alicia.
+* `id` (INTEGER PRIMARY KEY AUTOINCREMENT)
+* `role` (TEXT - 'user' o 'assistant')
+* `content` (TEXT)
+* `created_at` (TIMESTAMP)
+
+---
+
+## 🔐 Seguridad y Autenticación
+
+Para proteger los datos de salud sensibles de los usuarios en entornos de demostración y producción (ideal para presentar en LinkedIn), la arquitectura contempla la protección de endpoints y el resguardo de información:
+* **Autenticación y Seguridad de Endpoints (Mock Auth / API Key)**: Para no dejar endpoints sensibles (como `/api/profile`) abiertos al público, las peticiones desde React Native viajan con una cabecera `X-API-KEY` simple o un middleware básico de JWT para autenticar y proteger los datos sensibles de salud del usuario.
+* **Cifrado de Datos en Reposo**: La información personal y médica del usuario y del paciente es automáticamente encriptada en la base de datos local SQLite utilizando `Fernet` (cifrado simétrico robusto bajo el estándar AES-128).
 
 ---
 

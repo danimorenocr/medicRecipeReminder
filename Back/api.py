@@ -1,6 +1,13 @@
 import io
 import dataclasses
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+import os
+from typing import Optional
+from dotenv import load_dotenv
+
+# Cargar variables de entorno al inicio
+load_dotenv()
+
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Header, Depends, status
 from PIL import Image
 from infrastructure.database.sqlite_repository import SQLiteRecipeRepository
 from infrastructure.services.gemini_extractor import GeminiRecipeExtractor
@@ -11,7 +18,7 @@ from core.use_cases import ProcessRecipeUseCase
 
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="Recetas Claras API")
+app = FastAPI(title="Alicia AI API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -36,6 +43,20 @@ use_case = ProcessRecipeUseCase(
     repository=repository
 )
 
+API_KEY_ENV = os.getenv("API_KEY", "dev-secret-api-key-9988")
+
+async def verify_api_key(x_api_key: Optional[str] = Header(None)):
+    if not x_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="API Key faltante en la cabecera X-API-KEY"
+        )
+    if x_api_key != API_KEY_ENV:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="API Key inválida o no autorizada"
+        )
+
 from datetime import datetime
 
 def calcular_edad(fecha_nacimiento_str: str) -> int:
@@ -58,7 +79,7 @@ def calcular_edad(fecha_nacimiento_str: str) -> int:
         print(f"Error calculando edad: {e}")
         return 0
 
-@app.get("/api/profile")
+@app.get("/api/profile", dependencies=[Depends(verify_api_key)])
 async def get_profile():
     try:
         profile = repository.obtener_perfil_usuario()
@@ -69,7 +90,7 @@ async def get_profile():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/profile")
+@app.post("/api/profile", dependencies=[Depends(verify_api_key)])
 async def save_profile(request: dict):
     try:
         user_id = repository.guardar_o_actualizar_perfil_usuario(request)
@@ -77,21 +98,21 @@ async def save_profile(request: dict):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/recipes")
+@app.get("/api/recipes", dependencies=[Depends(verify_api_key)])
 async def get_recipes():
     try:
         return repository.obtener_recetas()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/medications")
+@app.get("/api/medications", dependencies=[Depends(verify_api_key)])
 async def get_medications():
     try:
         return repository.obtener_todos_los_medicamentos()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/medications")
+@app.post("/api/medications", dependencies=[Depends(verify_api_key)])
 async def create_medication(request: dict):
     try:
         med_id = repository.guardar_o_actualizar_medicamento(request)
@@ -99,7 +120,7 @@ async def create_medication(request: dict):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.put("/api/medications/{id}")
+@app.put("/api/medications/{id}", dependencies=[Depends(verify_api_key)])
 async def update_medication(id: int, request: dict):
     try:
         request["id"] = id
@@ -273,10 +294,25 @@ async def get_nearby_hospitals(lat: float, lng: float, radius: float = 5000):
     }
 
 
-@app.post("/api/chat")
+@app.get("/api/chat/history", dependencies=[Depends(verify_api_key)])
+async def get_chat_history():
+    try:
+        history = repository.obtener_historial_chat()
+        return {"history": history}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/chat/history", dependencies=[Depends(verify_api_key)])
+async def clear_chat_history():
+    try:
+        repository.vaciar_historial_chat()
+        return {"status": "success", "message": "Historial de chat vaciado"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/chat", dependencies=[Depends(verify_api_key)])
 async def chat(request: dict):
     message = request.get("message")
-    history = request.get("history", [])
     if not message:
         raise HTTPException(status_code=400, detail="El mensaje no puede estar vacío")
         
@@ -284,9 +320,12 @@ async def chat(request: dict):
         from infrastructure.clients.api_clients import get_groq_client
         client = get_groq_client()
         
+        # Obtener historial desde la base de datos
+        db_history = repository.obtener_historial_chat()
+        
         # Determinar si es el inicio de la conversación (sin mensajes previos del usuario en el historial)
         is_initial_stage = True
-        for msg in history:
+        for msg in db_history:
             if msg.get("role") == "user":
                 is_initial_stage = False
                 break
@@ -317,8 +356,8 @@ async def chat(request: dict):
         
         messages = [{"role": "system", "content": system_instruction}]
         
-        # Cargar historial
-        for msg in history:
+        # Cargar historial de la base de datos
+        for msg in db_history:
             messages.append({
                 "role": msg.get("role", "user"),
                 "content": msg.get("content", "")
@@ -335,13 +374,18 @@ async def chat(request: dict):
         )
         
         reply = response.choices[0].message.content.strip()
+        
+        # Persistir los mensajes en la base de datos
+        repository.guardar_mensaje_chat("user", message)
+        repository.guardar_mensaje_chat("assistant", reply)
+        
         return {"reply": reply}
     except Exception as e:
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/recipes/process")
+@app.post("/api/recipes/process", dependencies=[Depends(verify_api_key)])
 async def process_recipe(
     file: UploadFile = File(...),
     chat_id: str = Form(None),

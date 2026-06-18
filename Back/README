@@ -1,6 +1,16 @@
-# Recetas Claras: Extractor de Recetas Médicas con IA
+# Alicia AI: Extractor de Recetas Médicas con IA
 
-Este proyecto es un asistente de salud inteligente en Telegram diseñado para procesar, extraer y persistir de forma estructurada la información de recetas u órdenes médicas en formato físico (imágenes) usando modelos avanzados de Inteligencia Artificial (Gemini Vision) y bases de datos locales (SQLite).
+<p align="center">
+  <img src="../Recetas%20Medicas%20Front/recetas-medicas/assets/images/icon.png" width="150" alt="Alicia AI Logo" style="border-radius: 28px;" />
+</p>
+
+<p align="center">
+  <b>Alicia AI</b> (también conocido como <b>Recetas Claras</b>) es un asistente de salud inteligente en Telegram y API del backend diseñado para procesar, extraer y persistir de forma estructurada la información de recetas u órdenes médicas en formato físico (imágenes) usando modelos avanzados de Inteligencia Artificial (Gemini Vision) y bases de datos locales (SQLite).
+</p>
+
+<p align="center">
+  <img src="../Recetas%20Medicas%20Front/recetas-medicas/assets/images/alicia_ai_preview.jpg" width="100%" alt="Alicia AI Preview" style="border-radius: 16px;" />
+</p>
 
 ## 📋 Arquitectura del Proyecto
 
@@ -78,6 +88,13 @@ Almacena cada uno de los medicamentos prescritos en la receta correspondiente.
 - `frecuencia` (TEXT)
 - `duracion` (TEXT)
 
+### 3. Tabla `mensajes_chat` (Historial Chat App Móvil)
+Almacena el historial conversacional con el asistente médico Alicia.
+- `id` (INTEGER PRIMARY KEY AUTOINCREMENT)
+- `role` (TEXT - 'user' o 'assistant')
+- `content` (TEXT)
+- `created_at` (TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
+
 ---
 
 ## 🛠️ Requisitos de Instalación
@@ -101,24 +118,39 @@ Almacena cada uno de los medicamentos prescritos en la receta correspondiente.
    pip install -r requirements.txt
    ```
 
-4. **Configurar el archivo `.env`** en la raíz del proyecto:
+4. **Configurar el archivo `.env`** en la carpeta `Back`:
    ```env
+   # Tokens y Claves de API
    TELEGRAM_TOKEN=tu_token_de_telegram
    GROQ_API_KEY=tu_token_de_groq
    GEMINI_API_KEY=tu_token_de_gemini
+   GOOGLE_PLACES_API_KEY=tu_google_places_api_key_opcional
+
+   # Seguridad y Cifrado
+   ENCRYPTION_KEY=clave_fernet_aes_32_bytes_base64  # Requerido para cifrar datos en reposo
+   API_KEY=tu_api_key_privada_para_endpoints        # Requerida para autorizar peticiones del bot y app
    ```
 
 ---
 
 ## 🚀 Ejecución
 
-Para iniciar el bot y crear automáticamente la base de datos si no existe, ejecuta:
+El backend consta de dos servicios independientes que se comunican entre sí:
 
+### 1. Servidor de la API (FastAPI)
+Ejecuta la API que procesa recetas, busca en OpenFDA, CIE-10 y atiende peticiones de la App Móvil:
+```bash
+uvicorn api:app --reload --host 0.0.0.0 --port 8000
+```
+La API estará accesible en `http://localhost:8000` y su documentación interactiva (Swagger Docs) en `http://localhost:8000/docs`.
+
+### 2. Bot de Telegram (August)
+Ejecuta el servicio de polling que escucha mensajes e imágenes en Telegram para programar alarmas:
 ```bash
 python telegram_bot.py
 ```
 
-Al enviar una imagen por Telegram, el bot procesará la foto y responderá con el JSON estructurado además de confirmar su almacenamiento:
+Al enviar una imagen por Telegram, el bot interactuará con la API (usando la cabecera `X-API-KEY` de seguridad) y retornará la información estructurada:
 
 ```json
 {
@@ -140,9 +172,11 @@ Al enviar una imagen por Telegram, el bot procesará la foto y responderá con e
   "medicamentos": [
     {
       "nombre": "Acetaminofén",
+      "generic_name": "Acetaminophen",
       "dosis": "500 mg",
       "frecuencia": "Cada 6 horas",
       "duracion": "5 días"
+      ...
     }
   ]
 }

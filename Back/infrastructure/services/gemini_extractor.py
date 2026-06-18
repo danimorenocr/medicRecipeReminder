@@ -33,7 +33,8 @@ Tu objetivo es extraer toda la información disponible y estructurarla estrictam
   "fecha": "Fecha de emisión de la receta (o null si no está visible)",
   "medicamentos": [
     {
-      "nombre": "Nombre comercial o principio activo del medicamento",
+      "nombre": "Nombre comercial o principio activo del medicamento tal como aparece en la receta (ej: Dolex, Buscapina, Nolotil)",
+      "generic_name": "Principio activo traducido al inglés (ej: Acetaminophen en lugar de Dolex, Hyoscine butylbromide en lugar de Buscapina, o null si no se conoce)",
       "dosis": "Dosificación, concentración o cantidad (ej. 500mg, 1 tableta, 20ml, etc. O null si no se especifica)",
       "frecuencia": "Frecuencia de administración (ej. cada 8 horas, una vez al día, con las comidas, etc. O null si no se especifica)",
       "duracion": "Duración total del tratamiento (ej. 7 días, 1 mes, permanente, etc. O null si no se especifica)"
@@ -131,7 +132,8 @@ class GeminiRecipeExtractor(IRecipeExtractor):
                     nombre=med_raw.get("nombre"),
                     dosis=med_raw.get("dosis"),
                     frecuencia=med_raw.get("frecuencia"),
-                    duracion=med_raw.get("duracion")
+                    duracion=med_raw.get("duracion"),
+                    generic_name=med_raw.get("generic_name")
                 ))
 
         return Recipe(

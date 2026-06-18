@@ -40,7 +40,8 @@ class ProcessRecipeUseCase:
         if recipe.medicamentos:
             for med in recipe.medicamentos:
                 try:
-                    fda_info = self.fda_service.consultar_medicamento(med.nombre)
+                    query_name = med.generic_name if med.generic_name else med.nombre
+                    fda_info = self.fda_service.consultar_medicamento(query_name)
                     if fda_info:
                         med.brand_name = fda_info.get("brand_name")
                         med.generic_name = fda_info.get("generic_name")
